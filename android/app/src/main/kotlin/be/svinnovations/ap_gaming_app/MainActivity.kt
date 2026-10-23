@@ -1,4 +1,4 @@
-package com.example.ap_gaming_app
+package be.svinnovations.ap_gaming_app
 
 import io.flutter.embedding.android.FlutterActivity
 
