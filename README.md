@@ -35,6 +35,10 @@ flutter test
 
 Pushing a tag like `v1.0.0` also attaches the builds to a GitHub release. The build number is the workflow run number; the version name comes from `pubspec.yaml`.
 
+### Installing the iOS build
+
+The iOS build is unsigned until the project has a paid Apple Developer account, and iOS refuses to install unsigned apps. To try it on your own iPhone, sideload the `.ipa` with [Sideloadly](https://sideloadly.io) or [AltStore](https://altstore.io): they sign it with your free Apple ID. Such installs expire after 7 days and need re-signing. With a paid account, the workflow can sign builds and upload them to TestFlight instead.
+
 ### Android signing
 
 Without secrets, release builds are signed with debug keys: they install fine, but Google Play won't accept them. To sign with an upload key, add these repository secrets:
@@ -47,6 +51,19 @@ Without secrets, release builds are signed with debug keys: they install fine, b
 | `ANDROID_KEY_PASSWORD` | key password |
 
 Create the keystore with `keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`.
+
+### App icon and launch screen
+
+The icon is the website's gamepad mark. Its sources are the SVGs in `assets/icon`; after editing one, render it to PNG and regenerate:
+
+```bash
+for f in assets/icon/*.svg; do rsvg-convert -w 1024 -h 1024 "$f" -o "${f%.svg}.png"; done
+magick assets/icon/icon.png -alpha off assets/icon/icon.png   # App Store icons may not have transparency
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
+```
+
+`flutter_launcher_icons` sets `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` to `AppIcon` in the Xcode project; revert that line (it must stay `YES`).
 
 ### Pointing a build at another server
 
