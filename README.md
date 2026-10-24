@@ -65,6 +65,19 @@ dart run flutter_native_splash:create
 
 `flutter_launcher_icons` sets `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` to `AppIcon` in the Xcode project; revert that line (it must stay `YES`).
 
+### Push notifications
+
+Members get a push notification 15 minutes before each reservation. The backend sends it through Firebase Cloud Messaging, so it also works for reservations made on the website or by a Gaming Hub manager. The app registers the phone after sign-in and unregisters it on sign-out; the reminder can be switched off under Account → Meldingen.
+
+Until Firebase is configured, builds simply have no push notifications. To switch them on:
+
+1. Create a Firebase project and add an Android app (`be.svinnovations.ap_gaming_app`) and an iOS app (`be.svinnovations.apGamingApp`).
+2. Copy `config/firebase.example.json` to `config/firebase.json` and fill in the values from both apps' config (the API key, app ID, sender ID and project ID). These identify the project and aren't secret, so the file can be committed; CI then builds with it.
+3. Give the platform backend the service account key: `FIREBASE_SERVICE_ACCOUNT` (see its `.env.prod.example`).
+4. iOS only, once there is a paid Apple Developer account: create an APNs key and upload it in Firebase (Project settings → Cloud Messaging), and sign the builds. The push entitlement is already in `ios/Runner/Runner.entitlements`.
+
+Locally: `flutter run --dart-define-from-file=config/firebase.json`.
+
 ### Pointing a build at another server
 
 Set the repository variable `WEB_URL` (for example a staging site). Without it, builds use the default in `lib/config.dart`.

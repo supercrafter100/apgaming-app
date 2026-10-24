@@ -49,6 +49,9 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      # Push notifications are compiled in when config/firebase.json exists (see README)
+      - name: Firebase config
+        run: if [ -f config/firebase.json ]; then echo "FIREBASE_DEFINES=--dart-define-from-file=config/firebase.json" >> "$GITHUB_ENV"; fi
 
       # Without these secrets the release build is signed with debug keys (installable, not uploadable to Play).
       - name: Configure release signing
@@ -68,9 +71,9 @@ jobs:
           EOF
 
       - name: Build APK
-        run: flutter build apk --release --build-number=$GITHUB_RUN_NUMBER ${WEB_URL:+--dart-define=WEB_URL=$WEB_URL}
+        run: flutter build apk --release --build-number=$GITHUB_RUN_NUMBER ${WEB_URL:+--dart-define=WEB_URL=$WEB_URL} $FIREBASE_DEFINES
       - name: Build app bundle
-        run: flutter build appbundle --release --build-number=$GITHUB_RUN_NUMBER ${WEB_URL:+--dart-define=WEB_URL=$WEB_URL}
+        run: flutter build appbundle --release --build-number=$GITHUB_RUN_NUMBER ${WEB_URL:+--dart-define=WEB_URL=$WEB_URL} $FIREBASE_DEFINES
 
       - name: Collect builds
         run: |
@@ -95,11 +98,14 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      # Push notifications are compiled in when config/firebase.json exists (see README)
+      - name: Firebase config
+        run: if [ -f config/firebase.json ]; then echo "FIREBASE_DEFINES=--dart-define-from-file=config/firebase.json" >> "$GITHUB_ENV"; fi
 
       # Unsigned: proves the app builds and can be re-signed or sideloaded.
       # TestFlight/App Store needs an Apple Developer certificate and provisioning profile.
       - name: Build iOS (no code signing)
-        run: flutter build ios --release --no-codesign --build-number=$GITHUB_RUN_NUMBER ${WEB_URL:+--dart-define=WEB_URL=$WEB_URL}
+        run: flutter build ios --release --no-codesign --build-number=$GITHUB_RUN_NUMBER ${WEB_URL:+--dart-define=WEB_URL=$WEB_URL} $FIREBASE_DEFINES
 
       - name: Package unsigned IPA
         run: |

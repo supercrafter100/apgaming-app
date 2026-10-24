@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../app_scope.dart';
+import '../notifications/push_notifications.dart';
 import '../theme.dart';
 import '../util/futures.dart';
 import '../widgets/common.dart';
@@ -162,6 +163,8 @@ class _AccountScreenState extends State<AccountScreen> {
                               ],
                             ),
                     ),
+                    const _SectionTitle('Meldingen'),
+                    const Card(clipBehavior: Clip.antiAlias, child: _ReminderSetting()),
                     const _SectionTitle('Hulp'),
                     Card(
                       clipBehavior: Clip.antiAlias,
@@ -204,6 +207,53 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ReminderSetting extends StatelessWidget {
+  const _ReminderSetting();
+
+  @override
+  Widget build(BuildContext context) {
+    final push = AppScope.authOf(context).push;
+    return ListenableBuilder(
+      listenable: push,
+      builder: (context, _) {
+        const title = Text('Herinnering voor je sessie');
+        const icon = Icon(Icons.notifications_active_outlined);
+        final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(color: HubColors.textSecondary);
+
+        if (push.status != PushStatus.enabled) {
+          return ListTile(
+            leading: icon,
+            title: title,
+            enabled: false,
+            subtitle: Text(switch (push.status) {
+              PushStatus.denied => 'Meldingen staan uit voor deze app. Zet ze aan in de instellingen van je telefoon.',
+              _ when !push.isConfigured => 'Nog niet beschikbaar in deze versie van de app.',
+              _ => 'Meldingen worden ingesteld…',
+            }, style: subtitleStyle),
+          );
+        }
+
+        return SwitchListTile.adaptive(
+          secondary: icon,
+          title: title,
+          subtitle: Text(
+            '15 minuten voor je reservatie begint, ook als je via de website reserveerde.',
+            style: subtitleStyle,
+          ),
+          value: push.reservationReminders,
+          onChanged: (enabled) async {
+            try {
+              await push.setReservationReminders(enabled);
+            } on ApiException catch (e) {
+              if (context.mounted) showMessage(context, e.message, error: true);
+            }
+          },
+        );
+      },
     );
   }
 }

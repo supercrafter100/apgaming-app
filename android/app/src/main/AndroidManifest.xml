@@ -26,6 +26,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Push notifications: white silhouette icon and accent color -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
         <!-- Receives the apgaminghub://auth redirect after signing in through the web UI -->
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"

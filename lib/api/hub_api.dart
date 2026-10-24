@@ -65,6 +65,20 @@ class HubApi {
           .map((e) => InventoryWindow.adjustment(e as Map<String, dynamic>))
           .toList();
 
+  // --------------- Push notifications ---------------
+
+  /// Registers (or updates) this phone; returns whether reservation reminders are on for it.
+  Future<bool> registerPushDevice({required String fid, required String platform, bool? reservationReminders}) async {
+    final json = await _client.post('/notifications/devices', {
+      'fid': fid,
+      'platform': platform,
+      'reservationReminders': ?reservationReminders,
+    });
+    return (json as Map<String, dynamic>)['reservationReminders'] as bool? ?? true;
+  }
+
+  Future<void> unregisterPushDevice(String fid) => _client.delete('/notifications/devices/${Uri.encodeComponent(fid)}');
+
   // --------------- Staff ---------------
 
   Future<List<AdminReservation>> reservationsOn(DateTime day) async {

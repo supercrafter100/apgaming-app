@@ -30,6 +30,7 @@ class GamingHubApp extends StatelessWidget {
       auth: auth,
       child: MaterialApp(
         title: 'AP Gaming Hub',
+        scaffoldMessengerKey: auth.push.messengerKey,
         debugShowCheckedModeBanner: false,
         theme: buildHubTheme(),
         themeMode: ThemeMode.dark,
