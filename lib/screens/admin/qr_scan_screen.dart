@@ -68,6 +68,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => _ResultSheet(reservation: result, error: error),
     );
@@ -231,7 +232,7 @@ class _ResultSheet extends StatelessWidget {
     final color = ok ? HubColors.green : HubColors.danger;
     final isToday = ok && isSameDay(r.start, wallClockNow());
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
