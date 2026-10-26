@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/api_client.dart';
 import '../../api/models.dart';
@@ -21,12 +24,19 @@ class AdminReservationsScreen extends StatefulWidget {
   State<AdminReservationsScreen> createState() => _AdminReservationsScreenState();
 }
 
-class _AdminReservationsScreenState extends State<AdminReservationsScreen> {
+class _AdminReservationsScreenState extends State<AdminReservationsScreen> with WidgetsBindingObserver {
   DateTime _day = _today();
   List<AdminReservation>? _reservations;
   String? _error;
   String _query = '';
   bool _showCancelled = false;
+  bool _bookedOnly = false;
+  Hardware? _deviceFilter;
+
+  Timer? _refreshTimer;
+
+  static const _prefBookedOnly = 'admin_filter_booked_only';
+  static const _prefDeviceFilter = 'admin_filter_device';
 
   static DateTime _today() {
     final now = wallClockNow();
@@ -36,7 +46,41 @@ class _AdminReservationsScreenState extends State<AdminReservationsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _restoreFilters();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
+  Future<void> _restoreFilters() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _bookedOnly = prefs.getBool(_prefBookedOnly) ?? false;
+      final deviceKey = prefs.getString(_prefDeviceFilter);
+      _deviceFilter = deviceKey != null ? Hardware.fromKey(deviceKey) : null;
+    });
+  }
+
+  Future<void> _persistFilters() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefBookedOnly, _bookedOnly);
+    if (_deviceFilter != null) {
+      await prefs.setString(_prefDeviceFilter, _deviceFilter!.key);
+    } else {
+      await prefs.remove(_prefDeviceFilter);
+    }
   }
 
   Future<void> _load() async {
@@ -140,6 +184,8 @@ class _AdminReservationsScreenState extends State<AdminReservationsScreen> {
     final all = _reservations;
     final visible = all
         ?.where((r) => _showCancelled || r.status != ReservationStatus.cancelled)
+        .where((r) => !_bookedOnly || r.status == ReservationStatus.reserved)
+        .where((r) => _deviceFilter == null || r.hardware == _deviceFilter)
         .where((r) => _query.isEmpty || r.matches(_query))
         .toList();
 
@@ -192,13 +238,55 @@ class _AdminReservationsScreenState extends State<AdminReservationsScreen> {
                     const SizedBox(height: 12),
                     if (all != null) _DaySummary(reservations: all),
                     const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: FilterChip(
-                        label: const Text('Geannuleerd tonen'),
-                        selected: _showCancelled,
-                        onSelected: (v) => setState(() => _showCancelled = v),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilterChip(
+                          label: const Text('Alleen geboekt'),
+                          avatar: Icon(Icons.event_available_rounded, size: 18, color: _bookedOnly ? Colors.white : HubColors.blue),
+                          selected: _bookedOnly,
+                          onSelected: (v) {
+                            setState(() => _bookedOnly = v);
+                            _persistFilters();
+                          },
+                        ),
+                        FilterChip(
+                          label: const Text('Geannuleerd tonen'),
+                          selected: _showCancelled,
+                          onSelected: (v) => setState(() => _showCancelled = v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Quick device filter buttons.
+                    Row(
+                      children: [
+                        _DeviceFilterChip(
+                          hardware: null,
+                          label: 'Alle',
+                          selected: _deviceFilter == null,
+                          onSelected: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _deviceFilter = null);
+                            _persistFilters();
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        for (final hw in Hardware.values) ...[
+                          _DeviceFilterChip(
+                            hardware: hw,
+                            label: hw.shortLabel,
+                            selected: _deviceFilter == hw,
+                            onSelected: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _deviceFilter = _deviceFilter == hw ? null : hw);
+                              _persistFilters();
+                            },
+                          ),
+                          if (hw != Hardware.values.last) const SizedBox(width: 8),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -630,6 +718,47 @@ class _AdminReservationSheet extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DeviceFilterChip extends StatelessWidget {
+  const _DeviceFilterChip({required this.hardware, required this.label, required this.selected, required this.onSelected});
+
+  final Hardware? hardware;
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Pressable(
+        onTap: onSelected,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? HubColors.red.withValues(alpha: 0.15) : HubColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? HubColors.red.withValues(alpha: 0.5) : HubColors.border),
+          ),
+          child: Column(
+            children: [
+              if (hardware != null) Icon(hardwareIcon(hardware!), size: 20, color: selected ? HubColors.red : HubColors.textSecondary),
+              if (hardware == null) Icon(Icons.devices_rounded, size: 20, color: selected ? HubColors.red : HubColors.textSecondary),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? HubColors.red : HubColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
