@@ -46,10 +46,14 @@ void main() {
     expect(day.startTimes(thursday, 60, Hardware.pc, now: DateTime.utc(2026, 10, 21)), hasLength(5));
   });
 
-  test('bookable days are today plus three days, only when open', () {
-    final days = base.bookableDays(now: DateTime.utc(2026, 10, 21, 18)); // Wednesday
+  test('bookable days are today (if open) plus the first next open day', () {
+    // Wednesday — not open, so only the first upcoming open day (Thursday)
+    final days = base.bookableDays(now: DateTime.utc(2026, 10, 21, 18));
+    expect(days, [thursday]);
 
-    expect(days, [thursday, DateTime.utc(2026, 10, 23)]);
+    // Thursday — open today, so today + first next open day (Friday)
+    final daysFromThursday = base.bookableDays(now: DateTime.utc(2026, 10, 22, 9));
+    expect(daysFromThursday, [thursday, DateTime.utc(2026, 10, 23)]);
   });
 
   test('knows which hardware is offered and how many controllers it has', () {
