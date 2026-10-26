@@ -29,12 +29,20 @@ class Availability {
 
   bool isOpenOn(DateTime day) => _openingHours(day).isNotEmpty;
 
-  /// Today plus the next [maxAdvanceDays] days, limited to days the hub opens.
+  /// Today (if open) plus the first upcoming open day within [maxAdvanceDays].
   List<DateTime> bookableDays({DateTime? now}) {
     final today = now ?? wallClockNow();
-    return [for (var i = 0; i <= maxAdvanceDays; i++) DateTime.utc(today.year, today.month, today.day + i)]
-        .where(isOpenOn)
-        .toList();
+    final days = <DateTime>[];
+    final todayUtc = DateTime.utc(today.year, today.month, today.day);
+    if (isOpenOn(todayUtc)) days.add(todayUtc);
+    for (var i = 1; i <= maxAdvanceDays; i++) {
+      final d = DateTime.utc(today.year, today.month, today.day + i);
+      if (isOpenOn(d)) {
+        days.add(d);
+        break;
+      }
+    }
+    return days;
   }
 
   /// Start times (minutes after midnight) for [day] where [hardware] is still free for [duration] minutes.
