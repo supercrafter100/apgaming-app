@@ -2,8 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Push notifications (APNs). Applied when the app is signed with a paid Apple Developer account;
-	     Xcode switches it to production for App Store / TestFlight exports. -->
+	<!-- Push notifications (APNs). The CI workflow switches this to production for signed TestFlight builds. -->
 	<key>aps-environment</key>
 	<string>development</string>
 </dict>
