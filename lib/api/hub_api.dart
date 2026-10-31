@@ -20,8 +20,6 @@ class HubApi {
   Future<LinkedProviders> linkedProviders() async =>
       LinkedProviders.fromJson(await _client.get('/auth/links') as Map<String, dynamic>);
 
-  Future<void> unlinkProvider(String provider) => _client.delete('/auth/links/$provider');
-
   // --------------- Member reservations ---------------
 
   Future<MyReservations> myReservations() async =>

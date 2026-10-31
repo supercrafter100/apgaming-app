@@ -22,8 +22,18 @@ flutter test
 ## How login works
 
 1. The app opens `/api/auth/mobile/handoff?challenge=…` in an in-app browser tab, with a PKCE challenge.
-2. The backend sends the user through the website's `/login` if needed, then redirects to `apgaminghub://auth?code=…`.
+2. The backend sends the user through Microsoft login if there's no session or the session has no Microsoft account, then redirects to `apgaminghub://auth?code=…`.
 3. The app exchanges the code and its PKCE verifier at `POST /api/auth/mobile/token` for a bearer token, which it keeps in secure storage.
+
+The app is Microsoft-only: reservations require a linked Microsoft account, which the backend enforces. Google sign-in is only for the website's admin UI, so someone with just a Google account can't use the app or reserve, though a Gaming Hub manager can still create a reservation for them.
+
+## Demo mode
+
+**Demo bekijken zonder account** on the login screen opens the whole app, including the Gaming Hub manager screens, with sample data. It exists for App Review, because the Microsoft sign-in can't offer a test account.
+
+`lib/demo/demo_backend.dart` replaces the HTTP client with an in-memory backend that speaks the same JSON as the real API, so the demo adds no login route to the server and can't reach real data. Nothing is saved: closing the app or the demo starts it over. Push notifications are the only feature it leaves out. The scan screen offers a sample QR code, since there's no second phone to show one.
+
+When an API endpoint or its rules change, update the demo backend too.
 
 ## Builds (GitHub Actions)
 
@@ -100,7 +110,7 @@ The build appears in App Store Connect under the app's **TestFlight** tab, usual
 #### 6. Add testers
 
 - **Internal testers** (up to 100) need an App Store Connect account on your team. Under TestFlight → Internal Testing, create a group, add them and enable automatic distribution, so that each new build reaches them without a review.
-- **External testers** (up to 10,000) can be anyone, invited by email or public link. Create a group under External Testing and add a build to it. The first build of each version goes through Apple's beta review, which needs a description, a contact and a working test account, since the app requires a login.
+- **External testers** (up to 10,000) can be anyone, invited by email or public link. Create a group under External Testing and add a build to it. The first build of each version goes through Apple's beta review, which needs a description and a contact. There's no test account to give the reviewer, so point them to the [demo mode](#demo-mode) in the review notes. Apple's guidelines only allow a demo mode instead of a demo account with App Review's prior approval.
 
 Testers install the [TestFlight app](https://apps.apple.com/app/testflight/id899247664) and accept the invite. A build stops working 90 days after upload.
 

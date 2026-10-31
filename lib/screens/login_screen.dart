@@ -105,23 +105,48 @@ class LoginScreen extends StatelessWidget {
                           : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text('Inloggen'),
-                                SizedBox(width: 8),
-                                Icon(Icons.arrow_forward_rounded, size: 20),
+                                _MicrosoftLogo(),
+                                SizedBox(width: 10),
+                                Flexible(child: Text('Inloggen met Microsoft', overflow: TextOverflow.ellipsis)),
                               ],
                             ),
                     ),
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'Je logt in via de AP Gaming Hub website met je AP Microsoft- of Google-account.',
+                    'Gebruik je AP Microsoft-account.',
                     style: text.bodySmall?.copyWith(color: HubColors.textMuted),
                     textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: auth.signingIn ? null : auth.startDemo,
+                    child: const Text('Demo bekijken zonder account'),
                   ),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MicrosoftLogo extends StatelessWidget {
+  const _MicrosoftLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget square(int color) => Container(width: 8.5, height: 8.5, color: Color(color));
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [square(0xFFF25022), square(0xFF7FBA00)]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [square(0xFF00A4EF), square(0xFFFFB900)]),
         ],
       ),
     );

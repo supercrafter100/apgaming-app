@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'app_scope.dart';
 import 'auth/auth_controller.dart';
+import 'demo/demo_frame.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'theme.dart';
@@ -37,6 +38,7 @@ class GamingHubApp extends StatelessWidget {
         locale: const Locale('nl', 'BE'),
         supportedLocales: const [Locale('nl', 'BE')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        builder: (context, child) => DemoFrame(child: child!),
         home: const _AuthGate(),
       ),
     );

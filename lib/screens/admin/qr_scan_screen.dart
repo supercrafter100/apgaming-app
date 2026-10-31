@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../api/api_client.dart';
 import '../../api/models.dart';
 import '../../app_scope.dart';
+import '../../demo/demo_backend.dart';
 import '../../theme.dart';
 import '../../util/wall_clock.dart';
 import '../../widgets/common.dart';
@@ -178,11 +179,26 @@ class _QrScanScreenState extends State<QrScanScreen> {
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : _manualEntry,
-                  icon: const Icon(Icons.keyboard_outlined),
-                  label: const Text('Code handmatig invoeren'),
-                  style: OutlinedButton.styleFrom(backgroundColor: Colors.black54),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // There is no second phone to show a QR code in the demo.
+                    if (AppScope.readAuth(context).isDemo) ...[
+                      FilledButton.icon(
+                        onPressed: _busy ? null : () => _verify(DemoBackend.checkInCode),
+                        icon: const Icon(Icons.qr_code_2_rounded),
+                        label: const Text('Voorbeeld-QR scannen'),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _manualEntry,
+                      icon: const Icon(Icons.keyboard_outlined),
+                      label: const Text('Code handmatig invoeren'),
+                      style: OutlinedButton.styleFrom(backgroundColor: Colors.black54),
+                    ),
+                  ],
                 ),
               ),
             ),

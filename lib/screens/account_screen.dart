@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
-import '../api/models.dart';
 import '../app_scope.dart';
 import '../notifications/push_notifications.dart';
 import '../theme.dart';
-import '../util/futures.dart';
 import '../widgets/common.dart';
 import '../widgets/motion.dart';
 
@@ -17,8 +15,6 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
-  LinkedProviders? _links;
-
   @override
   void initState() {
     super.initState();
@@ -26,49 +22,32 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _load() async {
-    final auth = AppScope.readAuth(context);
     try {
-      final (links, _) = await both(auth.api.linkedProviders(), auth.refreshProfile());
-      if (mounted) setState(() => _links = links);
-    } on ApiException catch (e) {
-      if (mounted) showMessage(context, e.message, error: true);
-    }
-  }
-
-  Future<void> _unlink(String provider, String label) async {
-    final ok = await confirm(
-      context,
-      title: '$label ontkoppelen?',
-      message: 'Je kan daarna niet meer inloggen met je $label-account.',
-      confirmLabel: 'Ontkoppelen',
-      destructive: true,
-    );
-    if (!ok || !mounted) return;
-    try {
-      await AppScope.apiOf(context).unlinkProvider(provider);
-      if (mounted) showMessage(context, '$label is ontkoppeld.');
-      _load();
+      await AppScope.readAuth(context).refreshProfile();
     } on ApiException catch (e) {
       if (mounted) showMessage(context, e.message, error: true);
     }
   }
 
   Future<void> _signOut() async {
+    final auth = AppScope.readAuth(context);
+    if (auth.isDemo) return auth.signOut();
+
     final ok = await confirm(
       context,
       title: 'Uitloggen?',
-      message: 'Je moet daarna opnieuw inloggen via de website.',
+      message: 'Je moet daarna opnieuw inloggen met Microsoft.',
       confirmLabel: 'Uitloggen',
       destructive: true,
     );
-    if (ok && mounted) AppScope.readAuth(context).signOut();
+    if (ok && mounted) auth.signOut();
   }
 
   @override
   Widget build(BuildContext context) {
-    final profile = AppScope.authOf(context).profile!;
+    final auth = AppScope.authOf(context);
+    final profile = auth.profile!;
     final text = Theme.of(context).textTheme;
-    final links = _links;
 
     return Scaffold(
       body: GlowBackground(
@@ -137,32 +116,6 @@ class _AccountScreenState extends State<AccountScreen> {
                         ],
                       ),
                     ],
-                    const _SectionTitle('Inloggen met'),
-                    Card(
-                      clipBehavior: Clip.antiAlias,
-                      child: links == null
-                          ? const Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Center(child: CircularProgressIndicator.adaptive()),
-                            )
-                          : Column(
-                              children: [
-                                _ProviderTile(
-                                  label: 'Microsoft',
-                                  linked: links.microsoft > 0,
-                                  canUnlink: links.total > 1,
-                                  onUnlink: () => _unlink('microsoft', 'Microsoft'),
-                                ),
-                                const Divider(indent: 16, endIndent: 16),
-                                _ProviderTile(
-                                  label: 'Google',
-                                  linked: links.google > 0,
-                                  canUnlink: links.total > 1,
-                                  onUnlink: () => _unlink('google', 'Google'),
-                                ),
-                              ],
-                            ),
-                    ),
                     const _SectionTitle('Meldingen'),
                     const Card(clipBehavior: Clip.antiAlias, child: _ReminderSetting()),
                     const _SectionTitle('Hulp'),
@@ -197,7 +150,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     OutlinedButton.icon(
                       onPressed: _signOut,
                       icon: const Icon(Icons.logout_rounded),
-                      label: const Text('Uitloggen'),
+                      label: Text(auth.isDemo ? 'Demo afsluiten' : 'Uitloggen'),
                       style: OutlinedButton.styleFrom(foregroundColor: HubColors.danger),
                     ),
                   ]),
@@ -216,7 +169,8 @@ class _ReminderSetting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final push = AppScope.authOf(context).push;
+    final auth = AppScope.authOf(context);
+    final push = auth.push;
     return ListenableBuilder(
       listenable: push,
       builder: (context, _) {
@@ -230,7 +184,8 @@ class _ReminderSetting extends StatelessWidget {
             title: title,
             enabled: false,
             subtitle: Text(switch (push.status) {
-              PushStatus.denied => 'Meldingen staan uit voor deze app. Zet ze aan in de instellingen van je telefoon.',
+              _ when auth.isDemo => 'Niet beschikbaar in de demo.',
+              PushStatus.denied =>'Meldingen staan uit voor deze app. Zet ze aan in de instellingen van je telefoon.',
               _ when !push.isConfigured => 'Nog niet beschikbaar in deze versie van de app.',
               _ => 'Meldingen worden ingesteld…',
             }, style: subtitleStyle),
@@ -271,28 +226,6 @@ class _SectionTitle extends StatelessWidget {
         title.toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(color: HubColors.textMuted, letterSpacing: 1.2),
       ),
-    );
-  }
-}
-
-class _ProviderTile extends StatelessWidget {
-  const _ProviderTile({required this.label, required this.linked, required this.canUnlink, required this.onUnlink});
-
-  final String label;
-  final bool linked;
-  final bool canUnlink;
-  final VoidCallback onUnlink;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        linked ? Icons.link_rounded : Icons.link_off_rounded,
-        color: linked ? HubColors.green : HubColors.textMuted,
-      ),
-      title: Text(label),
-      subtitle: Text(linked ? 'Gekoppeld' : 'Niet gekoppeld', style: const TextStyle(color: HubColors.textSecondary)),
-      trailing: linked && canUnlink ? TextButton(onPressed: onUnlink, child: const Text('Ontkoppel')) : null,
     );
   }
 }

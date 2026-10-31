@@ -19,11 +19,13 @@ class ApiException implements Exception {
 /// that the mobile login handoff produced.
 class ApiClient {
   ApiClient({required this.baseUrl, required this.onUnauthorized, http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+    : httpClient = httpClient ?? http.Client();
 
   final String baseUrl;
   final void Function() onUnauthorized;
-  final http.Client _http;
+
+  /// Sends the requests; the demo swaps this for an in-memory backend.
+  http.Client httpClient;
 
   String? token;
 
@@ -42,7 +44,7 @@ class ApiClient {
 
     final http.Response response;
     try {
-      response = await http.Response.fromStream(await _http.send(request).timeout(const Duration(seconds: 20)));
+      response = await http.Response.fromStream(await httpClient.send(request).timeout(const Duration(seconds: 20)));
     } catch (_) {
       throw ApiException('Kan geen verbinding maken met de Gaming Hub. Controleer je internet.');
     }
@@ -90,7 +92,7 @@ String translateApiMessage(String message) {
     'Reservation is already cancelled': 'Deze reservatie is al geannuleerd.',
     'You cannot cancel a reservation that has already started or passed':
         'Je kan geen reservatie annuleren die al begonnen of voorbij is.',
-    'Cannot unlink your only sign-in provider': 'Je kan je enige login-methode niet ontkoppelen.',
+    'Reservations require a Microsoft account': 'Je kan alleen reserveren met je AP Microsoft-account.',
     'This time slot is already reserved': 'Dit tijdslot is al gereserveerd.',
     'Reservation not found': 'Reservatie niet gevonden.',
     'Invalid or expired login code': 'Inloggen is verlopen. Probeer opnieuw.',

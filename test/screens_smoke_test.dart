@@ -212,7 +212,7 @@ void main() {
     // Account
     await tester.tap(find.text('Account'));
     await settle(tester);
-    expect(find.text('Gekoppeld'), findsOneWidget);
+    expect(find.text('Google'), findsNothing);
     expect(find.text('Uitloggen'), findsOneWidget);
   });
 }

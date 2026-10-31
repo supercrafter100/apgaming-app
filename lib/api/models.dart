@@ -261,15 +261,10 @@ class InventoryWindow {
 }
 
 class LinkedProviders {
-  LinkedProviders({required this.google, required this.microsoft});
+  LinkedProviders({required this.microsoft});
 
-  factory LinkedProviders.fromJson(Map<String, dynamic> json) => LinkedProviders(
-    google: (json['google'] as List? ?? const []).length,
-    microsoft: (json['microsoft'] as List? ?? const []).length,
-  );
+  factory LinkedProviders.fromJson(Map<String, dynamic> json) =>
+      LinkedProviders(microsoft: (json['microsoft'] as List? ?? const []).length);
 
-  final int google;
   final int microsoft;
-
-  int get total => google + microsoft;
 }

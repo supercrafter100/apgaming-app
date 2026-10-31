@@ -13,22 +13,28 @@ import '../api/api_client.dart';
 import '../api/hub_api.dart';
 import '../api/models.dart';
 import '../config.dart';
+import '../demo/demo_backend.dart';
 import '../notifications/push_notifications.dart';
 
 enum AuthStatus { loading, signedOut, signedIn }
 
-/// Owns the session. Signing in goes through the website's own login page in an
-/// in-app browser tab; the backend then hands a one-time code back to the app
-/// (bound to a PKCE verifier) which is exchanged for a bearer token.
+/// Owns the session. Signing in goes through Microsoft in an in-app browser tab;
+/// the backend then hands a one-time code back to the app (bound to a PKCE
+/// verifier) which is exchanged for a bearer token. The app is Microsoft-only:
+/// Google accounts are for the website's admin UI.
 class AuthController extends ChangeNotifier {
   AuthController({FlutterSecureStorage? storage, http.Client? httpClient, PushNotifications? push})
     : _storage = storage ?? const FlutterSecureStorage(),
       push = push ?? PushNotifications() {
     client = ApiClient(baseUrl: apiUrl, onUnauthorized: _handleUnauthorized, httpClient: httpClient);
     api = HubApi(client);
+    _liveHttp = client.httpClient;
   }
 
   static const _tokenKey = 'auth_token';
+  static const _microsoftRequired = 'Log in met je AP Microsoft-account. Met een Google-account kan je de app niet gebruiken.';
+
+  late final http.Client _liveHttp;
 
   final FlutterSecureStorage _storage;
   late final ApiClient client;
@@ -40,11 +46,20 @@ class AuthController extends ChangeNotifier {
   String? error;
   bool signingIn = false;
 
+  /// True while exploring the app with sample data. Nothing in the demo reaches the backend or is saved on the phone.
+  bool isDemo = false;
+
   Future<void> restore() async {
     client.token = await _storage.read(key: _tokenKey);
     if (client.token == null) return _setSignedOut();
 
     try {
+      // Sessions from before the app became Microsoft-only may belong to a Google account.
+      if (!await _hasMicrosoftAccount()) {
+        error = _microsoftRequired;
+        await signOut();
+        return;
+      }
       await refreshProfile();
       unawaited(push.start(api));
     } on ApiException catch (e) {
@@ -83,6 +98,11 @@ class AuthController extends ChangeNotifier {
 
       final token = await api.exchangeLoginCode(code, verifier);
       client.token = token;
+      if (!await _hasMicrosoftAccount()) {
+        client.token = null;
+        error = _microsoftRequired;
+        return;
+      }
       await _storage.write(key: _tokenKey, value: token);
       await refreshProfile();
       unawaited(push.start(api));
@@ -97,12 +117,28 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> startDemo() async {
+    isDemo = true;
+    error = null;
+    client.httpClient = DemoBackend();
+    client.token = 'demo';
+    await refreshProfile();
+  }
+
   Future<void> signOut({bool unregisterDevice = true}) async {
+    if (isDemo) {
+      isDemo = false;
+      client.httpClient = _liveHttp;
+      return _setSignedOut();
+    }
+
     // Unregister first: it needs the session that is about to be cleared.
     await push.stop(unregisterDevice: unregisterDevice);
     await _storage.delete(key: _tokenKey);
     _setSignedOut();
   }
+
+  Future<bool> _hasMicrosoftAccount() async => (await api.linkedProviders()).microsoft > 0;
 
   void _handleUnauthorized() {
     if (status != AuthStatus.signedIn) return;
@@ -113,7 +149,7 @@ class AuthController extends ChangeNotifier {
 
   void _setSignedOut() {
     client.token = null;
-    profile = null;
+    // The profile stays: the home screen still reads it while it fades out. Use [status] to check for a session.
     status = AuthStatus.signedOut;
     notifyListeners();
   }
