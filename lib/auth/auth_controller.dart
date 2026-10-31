@@ -15,13 +15,14 @@ import '../api/models.dart';
 import '../config.dart';
 import '../demo/demo_backend.dart';
 import '../notifications/push_notifications.dart';
+import '../util/futures.dart';
 
 enum AuthStatus { loading, signedOut, signedIn }
 
 /// Owns the session. Signing in goes through Microsoft in an in-app browser tab;
 /// the backend then hands a one-time code back to the app (bound to a PKCE
-/// verifier) which is exchanged for a bearer token. The app is Microsoft-only:
-/// Google accounts are for the website's admin UI.
+/// verifier) which is exchanged for a bearer token. Members use Microsoft; Google
+/// is only for Gaming Hub managers, for the management pages.
 class AuthController extends ChangeNotifier {
   AuthController({FlutterSecureStorage? storage, http.Client? httpClient, PushNotifications? push})
     : _storage = storage ?? const FlutterSecureStorage(),
@@ -32,7 +33,8 @@ class AuthController extends ChangeNotifier {
   }
 
   static const _tokenKey = 'auth_token';
-  static const _microsoftRequired = 'Log in met je AP Microsoft-account. Met een Google-account kan je de app niet gebruiken.';
+  static const _microsoftRequired =
+      'Log in met je AP Microsoft-account. Inloggen met Google is alleen voor Gaming Hub managers.';
 
   late final http.Client _liveHttp;
 
@@ -49,13 +51,17 @@ class AuthController extends ChangeNotifier {
   /// True while exploring the app with sample data. Nothing in the demo reaches the backend or is saved on the phone.
   bool isDemo = false;
 
+  /// Only accounts with Microsoft linked can reserve; the backend enforces this too.
+  /// Managers who signed in with Google still get the management pages.
+  bool canReserve = true;
+
   Future<void> restore() async {
     client.token = await _storage.read(key: _tokenKey);
     if (client.token == null) return _setSignedOut();
 
     try {
       // Sessions from before the app became Microsoft-only may belong to a Google account.
-      if (!await _hasMicrosoftAccount()) {
+      if (!await _mayUseApp()) {
         error = _microsoftRequired;
         await signOut();
         return;
@@ -78,7 +84,7 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> signIn() async {
+  Future<void> signIn({bool withGoogle = false}) async {
     if (signingIn) return;
     signingIn = true;
     error = null;
@@ -89,16 +95,19 @@ class AuthController extends ChangeNotifier {
       final challenge = base64Url.encode(sha256.convert(ascii.encode(verifier)).bytes).replaceAll('=', '');
 
       final result = await FlutterWebAuth2.authenticate(
-        url: '$apiUrl/auth/mobile/handoff?challenge=$challenge',
+        url: '$apiUrl/auth/mobile/handoff?challenge=$challenge${withGoogle ? '&provider=google' : ''}',
         callbackUrlScheme: authCallbackScheme,
       );
 
-      final code = Uri.parse(result).queryParameters['code'];
+      final callback = Uri.parse(result).queryParameters;
+      if (callback['error'] == 'not-manager') throw ApiException(_microsoftRequired);
+
+      final code = callback['code'];
       if (code == null) throw ApiException('Inloggen is mislukt. Probeer opnieuw.');
 
       final token = await api.exchangeLoginCode(code, verifier);
       client.token = token;
-      if (!await _hasMicrosoftAccount()) {
+      if (!await _mayUseApp()) {
         client.token = null;
         error = _microsoftRequired;
         return;
@@ -119,6 +128,7 @@ class AuthController extends ChangeNotifier {
 
   Future<void> startDemo() async {
     isDemo = true;
+    canReserve = true;
     error = null;
     client.httpClient = DemoBackend();
     client.token = 'demo';
@@ -138,7 +148,11 @@ class AuthController extends ChangeNotifier {
     _setSignedOut();
   }
 
-  Future<bool> _hasMicrosoftAccount() async => (await api.linkedProviders()).microsoft > 0;
+  Future<bool> _mayUseApp() async {
+    final (links, account) = await both(api.linkedProviders(), api.profile());
+    canReserve = links.microsoft > 0;
+    return canReserve || account.canManageReservations;
+  }
 
   void _handleUnauthorized() {
     if (status != AuthStatus.signedIn) return;

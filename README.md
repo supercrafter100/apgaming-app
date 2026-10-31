@@ -22,10 +22,10 @@ flutter test
 ## How login works
 
 1. The app opens `/api/auth/mobile/handoff?challenge=…` in an in-app browser tab, with a PKCE challenge.
-2. The backend sends the user through Microsoft login if there's no session or the session has no Microsoft account, then redirects to `apgaminghub://auth?code=…`.
+2. The backend sends the user through Microsoft login if there's no session, or the session may not use the app, then redirects to `apgaminghub://auth?code=…`.
 3. The app exchanges the code and its PKCE verifier at `POST /api/auth/mobile/token` for a bearer token, which it keeps in secure storage.
 
-The app is Microsoft-only: reservations require a linked Microsoft account, which the backend enforces. Google sign-in is only for the website's admin UI, so someone with just a Google account can't use the app or reserve, though a Gaming Hub manager can still create a reservation for them.
+Reservations require a linked Microsoft account, which the backend enforces. Google sign-in is only for managing: the shield icon in the bottom-right corner of the login screen reveals it, and the backend only lets accounts with the `reservations.manage` permission into the app that way (`?provider=google` on the handoff). A Google-only manager gets the management pages but can't reserve for themselves, though any manager can create a reservation for someone else. Mention the shield in App Review's notes, since Apple doesn't allow undocumented features.
 
 ## Demo mode
 

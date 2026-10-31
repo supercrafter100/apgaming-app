@@ -222,6 +222,96 @@ void main() {
       expect(await storage.read(key: 'auth_token'), 'microsoft-session');
     });
 
+    test('lets a Google-only manager in without reservations', () async {
+      FlutterSecureStorage.setMockInitialValues({'auth_token': 'google-manager'});
+      final client = MockClient((request) async {
+        final body = switch (request.url.path) {
+          '/api/auth/links' => {
+            'google': [
+              {'id': 1, 'ssoId': 'g'},
+            ],
+            'microsoft': <Object>[],
+          },
+          _ => {
+            'id': 7,
+            'email': 'manager@example.com',
+            'permissions': ['reservations.manage'],
+          },
+        };
+        return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
+      });
+
+      final auth = AuthController(httpClient: client, storage: const FlutterSecureStorage());
+      await auth.restore();
+
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.canReserve, isFalse);
+    });
+
+    testWidgets('keeps Google out of sight until the shield is tapped', (tester) async {
+      tester.view.physicalSize = const Size(640, 1136); // the smallest phone we fit on
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+
+      final auth = AuthController(httpClient: backend(microsoft: true));
+      await auth.restore();
+      await tester.pumpWidget(GamingHubApp(auth: auth));
+      await settle(tester);
+
+      expect(find.textContaining('Google'), findsNothing);
+
+      await tester.tap(find.byTooltip('Beheerder'));
+      await settle(tester);
+
+      expect(find.text('Inloggen met Google (managers)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Everything stays reachable: the screen scrolls when it doesn't fit.
+      await tester.ensureVisible(find.text('Demo bekijken zonder account'));
+      await settle(tester);
+      expect(find.text('Demo bekijken zonder account').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('hides booking from a Google-only manager', (tester) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      final client = MockClient((request) async {
+        final Object body = switch (request.url.path) {
+          '/api/auth/links' => {
+            'google': [
+              {'id': 1, 'ssoId': 'g'},
+            ],
+            'microsoft': <Object>[],
+          },
+          '/api/auth/profile' => {
+            'id': 7,
+            'email': 'manager@example.com',
+            'permissions': ['reservations.manage'],
+          },
+          '/api/reservations/me' => {
+            'reservations': <Object>[],
+            'noShowCount': 0,
+            'noShowLimit': 3,
+            'isBlocked': false,
+          },
+          _ => <Object>[],
+        };
+        return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
+      });
+      FlutterSecureStorage.setMockInitialValues({'auth_token': 'google-manager'});
+      final auth = AuthController(httpClient: client, storage: const FlutterSecureStorage());
+      await auth.restore();
+
+      await tester.pumpWidget(GamingHubApp(auth: auth));
+      await settle(tester);
+
+      expect(find.text('Nieuwe reservatie'), findsNothing);
+      expect(find.text('Reserveren kan alleen met je AP Microsoft-account.'), findsOneWidget);
+      expect(find.text('Beheer'), findsOneWidget);
+    });
+
     test('translates the backend refusing a reservation', () {
       expect(translateApiMessage('Reservations require a Microsoft account'), contains('AP Microsoft-account'));
     });

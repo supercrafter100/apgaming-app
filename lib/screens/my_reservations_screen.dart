@@ -77,11 +77,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> with Widget
 
   @override
   Widget build(BuildContext context) {
+    final canReserve = AppScope.authOf(context).canReserve;
     final data = _data;
     final visible = data == null ? const <MyReservation>[] : (_showHistory ? data.history : data.upcoming);
 
     return Scaffold(
-      floatingActionButton: data == null || data.isBlocked
+      floatingActionButton: data == null || data.isBlocked || !canReserve
           ? null
           : aboveTabBar(
               context,
@@ -139,7 +140,11 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> with Widget
                     child: EmptyState(
                       icon: Icons.sports_esports_outlined,
                       title: _showHistory ? 'Nog geen eerdere reservaties' : 'Geen komende reservaties',
-                      message: _showHistory || data.isBlocked ? null : 'Boek een PC of console met de knop hieronder.',
+                      message: !canReserve
+                          ? 'Reserveren kan alleen met je AP Microsoft-account.'
+                          : _showHistory || data.isBlocked
+                          ? null
+                          : 'Boek een PC of console met de knop hieronder.',
                     ),
                   )
                 else
