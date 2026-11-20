@@ -83,7 +83,9 @@ class ApiClient {
 String translateApiMessage(String message) {
   const known = {
     'Cannot reserve in the past': 'Je kan niet reserveren in het verleden.',
-    'Reservations can only be made up to 3 days in advance': 'Je kan maximaal 3 dagen op voorhand reserveren.',
+    'Reservations can only be made for today or the next open day':
+        'Je kan alleen reserveren voor vandaag of de eerstvolgende open dag.',
+    'A reservation must last 1, 1.5 or 2 hours': 'Een reservatie duurt 1, 1,5 of 2 uur.',
     'You already have a reservation that overlaps with this time slot':
         'Je hebt al een reservatie die overlapt met dit tijdslot.',
     'You must have at least 30 minutes between reservations':

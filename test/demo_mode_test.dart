@@ -166,6 +166,31 @@ void main() {
         expect(day.where((r) => r.id == id), isEmpty);
       });
 
+      test('only lets members book today or the next open day, for 1 to 2 hours', () async {
+        // The past check uses the real clock, so book relative to today
+        final today = wallClockNow();
+        final live = HubApi(
+          ApiClient(baseUrl: 'https://demo.invalid/api', onUnauthorized: () {}, httpClient: DemoBackend(now: today)),
+        );
+        Future<void> book(int dayOffset, int minutes) => live.createReservation(
+          hardware: Hardware.pc,
+          controllers: 0,
+          day: DateTime.utc(today.year, today.month, today.day + dayOffset),
+          startMinutes: 20 * 60,
+          endMinutes: 20 * 60 + minutes,
+        );
+
+        await expectLater(
+          book(2, 60),
+          throwsA(isA<ApiException>().having((e) => e.message, 'message', contains('eerstvolgende open dag'))),
+        );
+        await expectLater(
+          book(1, 45),
+          throwsA(isA<ApiException>().having((e) => e.message, 'message', contains('1,5 of 2 uur'))),
+        );
+        await book(1, 90);
+      });
+
       test('clears no-shows for one user and for everyone', () async {
         final before = await api.noShows();
         expect(before, isNotEmpty);

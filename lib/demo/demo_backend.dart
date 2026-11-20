@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../reservations/availability.dart';
 import '../util/wall_clock.dart';
 
 /// A stand-in for the platform API that keeps everything in memory, so the demo
@@ -19,7 +20,6 @@ class DemoBackend extends http.BaseClient {
   static const _noShowLimit = 3;
   static const _maxPerDay = 2;
   static const _minGap = Duration(minutes: 30);
-  static const _maxAdvanceDays = 3;
 
   static const _inventory = {'pc': 5, 'ps5': 2, 'switch': 2, 'controller': 4, 'Nintendo Controllers': 4};
 
@@ -200,9 +200,13 @@ class DemoBackend extends http.BaseClient {
     final end = parseWallClock(body['endTime'] as String);
     final inventory = body['inventory'] as String;
 
+    if (!durationOptions.contains(end.difference(start).inMinutes)) {
+      throw _DemoError(400, 'A reservation must last 1, 1.5 or 2 hours');
+    }
     if (start.isBefore(wallClockNow())) throw _DemoError(400, 'Cannot reserve in the past');
-    if (start.difference(_today).inDays > _maxAdvanceDays) {
-      throw _DemoError(400, 'Reservations can only be made up to 3 days in advance');
+    // The demo hub is open every day, so today and tomorrow are the bookable days
+    if (start.difference(_today).inDays > 1) {
+      throw _DemoError(400, 'Reservations can only be made for today or the next open day');
     }
 
     final taken = _reservations.where((r) => r.isActive && r.inventory == inventory && r.overlaps(start, end)).length;
