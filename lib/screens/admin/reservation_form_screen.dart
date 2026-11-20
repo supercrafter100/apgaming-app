@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,7 +12,8 @@ import '../../widgets/common.dart';
 import '../../widgets/pickers.dart';
 
 /// Create a reservation for someone on the spot, or edit an existing one.
-/// Staff reservations skip the member restrictions (advance days, daily limit).
+/// Staff pick someone who booked before, or add a new person by name.
+/// Staff reservations skip the member restrictions (bookable days, daily limit).
 class ReservationFormScreen extends StatefulWidget {
   const ReservationFormScreen({super.key, this.reservation, required this.initialDay});
 
@@ -23,8 +26,13 @@ class ReservationFormScreen extends StatefulWidget {
 
 class _ReservationFormScreenState extends State<ReservationFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _email;
-  late final TextEditingController _sNumber;
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _sNumber = TextEditingController();
+
+  /// The existing person the reservation is for; null while searching or adding a new person.
+  ReservationPerson? _person;
+  bool _addingPerson = false;
   late Hardware _hardware;
   late int _controllers;
   late DateTime _day;
@@ -39,8 +47,9 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
   void initState() {
     super.initState();
     final r = widget.reservation;
-    _email = TextEditingController(text: r?.email ?? '');
-    _sNumber = TextEditingController(text: r?.hasSNumber ?? false ? r!.sNumber : '');
+    if (r != null) {
+      _person = ReservationPerson(id: r.userId, name: r.userName, email: r.email, sNumber: r.sNumber ?? '');
+    }
     _hardware = r?.hardware ?? Hardware.pc;
     _controllers = r?.controllers ?? 0;
     _day = r == null ? widget.initialDay : DateTime.utc(r.start.year, r.start.month, r.start.day);
@@ -55,6 +64,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
 
   @override
   void dispose() {
+    _name.dispose();
     _email.dispose();
     _sNumber.dispose();
     super.dispose();
@@ -62,6 +72,10 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_person == null && !_addingPerson) {
+      setState(() => _error = 'Kies voor wie de reservatie is, of voeg een nieuwe persoon toe.');
+      return;
+    }
     if (_end <= _start) {
       setState(() => _error = 'De eindtijd moet na de starttijd liggen.');
       return;
@@ -72,9 +86,15 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
       _error = null;
     });
 
+    final person = _person;
+    final samePerson = _isEdit && person != null && person.id == widget.reservation!.userId;
     final body = <String, dynamic>{
-      'email': _email.text.trim(),
-      if (_sNumber.text.trim().isNotEmpty) 'sNumber': _sNumber.text.trim(),
+      if (person != null && !samePerson) 'userId': person.id,
+      if (person == null) ...{
+        'name': _name.text.trim(),
+        'email': _email.text.trim(),
+        if (_sNumber.text.trim().isNotEmpty) 'sNumber': _sNumber.text.trim(),
+      },
       'inventory': _hardware.key,
       'controllers': _controllers,
       'startTime': wallClockIso(_day, _start),
@@ -140,30 +160,32 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            TextFormField(
-              controller: _email,
-              decoration: const InputDecoration(
-                labelText: 'E-mailadres',
-                prefixIcon: Icon(Icons.alternate_email_rounded),
+            _FieldLabel('Persoon'),
+            if (_person != null)
+              _ChosenPerson(person: _person!, onChange: () => setState(() => _person = null))
+            else if (_addingPerson)
+              _NewPersonFields(
+                name: _name,
+                email: _email,
+                sNumber: _sNumber,
+                onSearchInstead: () => setState(() => _addingPerson = false),
+              )
+            else
+              _PersonSearch(
+                onPicked: (person) => setState(() {
+                  _person = person;
+                  _error = null;
+                }),
+                onAddNew: (query) => setState(() {
+                  _addingPerson = true;
+                  _error = null;
+                  if (query.contains('@')) {
+                    _email.text = query;
+                  } else {
+                    _name.text = query;
+                  }
+                }),
               ),
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.email],
-              validator: (v) => (v == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim()))
-                  ? 'Vul een geldig e-mailadres in'
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _sNumber,
-              decoration: const InputDecoration(
-                labelText: 'S-nummer (optioneel)',
-                prefixIcon: Icon(Icons.badge_outlined),
-              ),
-              autocorrect: false,
-              textInputAction: TextInputAction.done,
-            ),
             const SizedBox(height: 24),
             _FieldLabel('Hardware'),
             SegmentedButton<Hardware>(
@@ -247,6 +269,218 @@ class _FieldLabel extends StatelessWidget {
         text.toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(color: HubColors.textMuted, letterSpacing: 1.2),
       ),
+    );
+  }
+}
+
+/// The person the reservation is for, with a way to pick someone else.
+class _ChosenPerson extends StatelessWidget {
+  const _ChosenPerson({required this.person, required this.onChange});
+
+  final ReservationPerson person;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.person_rounded),
+        title: Text(person.displayName),
+        subtitle: person.details.isEmpty ? null : Text(person.details),
+        trailing: TextButton(onPressed: onChange, child: const Text('Wijzigen')),
+      ),
+    );
+  }
+}
+
+/// Name, email and optional student number for someone who hasn't booked before.
+class _NewPersonFields extends StatelessWidget {
+  const _NewPersonFields({
+    required this.name,
+    required this.email,
+    required this.sNumber,
+    required this.onSearchInstead,
+  });
+
+  final TextEditingController name;
+  final TextEditingController email;
+  final TextEditingController sNumber;
+  final VoidCallback onSearchInstead;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextFormField(
+          controller: name,
+          decoration: const InputDecoration(labelText: 'Naam', prefixIcon: Icon(Icons.person_outline_rounded)),
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.name],
+          validator: (v) => (v == null || v.trim().isEmpty) ? 'Vul een naam in' : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: email,
+          decoration: const InputDecoration(labelText: 'E-mailadres', prefixIcon: Icon(Icons.alternate_email_rounded)),
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.email],
+          validator: (v) => (v == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim()))
+              ? 'Vul een geldig e-mailadres in'
+              : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: sNumber,
+          decoration: const InputDecoration(labelText: 'S-nummer (optioneel)', prefixIcon: Icon(Icons.badge_outlined)),
+          autocorrect: false,
+          textInputAction: TextInputAction.done,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Bestaat er al iemand met dit e-mailadres, dan komt de reservatie op die persoon.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HubColors.textMuted),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onSearchInstead,
+            icon: const Icon(Icons.search_rounded),
+            label: const Text('Toch iemand zoeken'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Searches people who have an account, as you type.
+class _PersonSearch extends StatefulWidget {
+  const _PersonSearch({required this.onPicked, required this.onAddNew});
+
+  final ValueChanged<ReservationPerson> onPicked;
+
+  /// Called with what was typed, to prefill the new person's name or email.
+  final ValueChanged<String> onAddNew;
+
+  @override
+  State<_PersonSearch> createState() => _PersonSearchState();
+}
+
+class _PersonSearchState extends State<_PersonSearch> {
+  final _query = TextEditingController();
+  Timer? _debounce;
+  List<ReservationPerson> _results = const [];
+  bool _searching = false;
+  String? _error;
+
+  String get _term => _query.text.trim();
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String _) {
+    _debounce?.cancel();
+    if (_term.length < 2) {
+      setState(() => _results = const []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 250), _search);
+  }
+
+  Future<void> _search() async {
+    final term = _term;
+    setState(() {
+      _searching = true;
+      _error = null;
+    });
+    try {
+      final results = await AppScope.apiOf(context).searchPeople(term);
+      if (mounted && term == _term) setState(() => _results = results);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(color: HubColors.textMuted);
+    final hasTerm = _term.length >= 2;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _query,
+          onChanged: _onChanged,
+          autocorrect: false,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            labelText: 'Zoek op naam, e-mail of s-nummer',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: _searching
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : null,
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_error!, style: muted),
+          ),
+        if (hasTerm) ...[
+          const SizedBox(height: 8),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (final person in _results) ...[
+                  ListTile(
+                    title: Text(person.displayName),
+                    subtitle: person.details.isEmpty ? null : Text(person.details),
+                    trailing: Text(
+                      '${person.reservationCount} ${person.reservationCount == 1 ? 'reservatie' : 'reservaties'}',
+                      style: muted,
+                    ),
+                    onTap: () => widget.onPicked(person),
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                ],
+                if (!_searching && _results.isEmpty && _error == null)
+                  ListTile(title: Text('Niemand gevonden.', style: muted)),
+                ListTile(
+                  leading: const Icon(Icons.person_add_alt_1_rounded, color: HubColors.red),
+                  title: const Text(
+                    'Nieuwe persoon toevoegen',
+                    style: TextStyle(color: HubColors.red, fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () => widget.onAddNew(_term),
+                ),
+              ],
+            ),
+          ),
+        ] else
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => widget.onAddNew(''),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Nieuwe persoon toevoegen'),
+            ),
+          ),
+      ],
     );
   }
 }

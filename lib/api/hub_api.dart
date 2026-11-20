@@ -94,6 +94,12 @@ class HubApi {
 
   Future<void> deleteReservation(int id) => _client.delete('/reservations/$id');
 
+  /// People to book for, by name, email or student number (at least 2 characters).
+  Future<List<ReservationPerson>> searchPeople(String search) async {
+    final json = await _client.get('/reservations/admin/people', query: {'search': search}) as List;
+    return json.map((e) => ReservationPerson.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<void> adminCreateReservation(Map<String, dynamic> body) => _client.post('/reservations/admin', body);
 
   Future<void> adminUpdateReservation(int id, Map<String, dynamic> body) => _client.patch('/reservations/$id', body);

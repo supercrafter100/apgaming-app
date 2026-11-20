@@ -142,6 +142,7 @@ class DemoBackend extends http.BaseClient {
       ],
       ('GET', ['reservations', 'verify', final cuid]) => _verify(cuid),
       ('GET', ['reservations']) => [for (final r in _on(query['date'])) _adminJson(r)],
+      ('GET', ['reservations', 'admin', 'people']) => _searchPeople(query['search'] ?? ''),
       ('POST', ['reservations', 'admin']) => _adminCreate(body),
       ('POST', ['reservations']) => _create(body),
       ('PATCH', ['reservations', 'no-shows', 'reset']) => _clearNoShows(),
@@ -259,19 +260,43 @@ class DemoBackend extends http.BaseClient {
     return reservation;
   }
 
+  List<Map<String, dynamic>> _searchPeople(String search) {
+    final term = search.trim().toLowerCase();
+    if (term.length < 2) throw _DemoError(400, 'search must be longer than or equal to 2 characters');
+    final matches = _users.where(
+      (u) => [u.name ?? '', u.email, u.sNumber].any((field) => field.toLowerCase().contains(term)),
+    );
+    int count(_DemoUser u) => _reservations.where((r) => r.user == u).length;
+    return [
+      for (final u in matches.toList()..sort((a, b) => count(b).compareTo(count(a))))
+        {'id': u.id, 'name': u.name, 'email': u.email, 'sNumber': u.sNumber, 'reservationCount': count(u)},
+    ].take(10).toList();
+  }
+
+  /// Same matching as the real backend: picked user, else email in any casing, else a new person.
   _DemoUser _userFor(Map<String, dynamic> body) {
-    final email = body['email'] as String;
-    final sNumber = body['sNumber'] as String? ?? 'N/A';
-    final known = _users.where((u) => u.email == email).firstOrNull;
+    final userId = body['userId'] as int?;
+    if (userId != null) {
+      return _users.where((u) => u.id == userId).firstOrNull ?? (throw _DemoError(404, 'User not found'));
+    }
+    final email = (body['email'] as String).trim().toLowerCase();
+    final known = _users.where((u) => u.email.toLowerCase() == email).firstOrNull;
     if (known != null) return known;
-    final user = _DemoUser(1100 + _users.length, null, email, sNumber);
+    final name = (body['name'] as String?)?.trim();
+    final user = _DemoUser(
+      1100 + _users.length,
+      name?.isEmpty ?? true ? null : name,
+      email,
+      body['sNumber'] as String? ?? 'N/A',
+    );
     _users.add(user);
     return user;
   }
 
   Map<String, dynamic> _adminUpdate(String id, Map<String, dynamic> body) {
-    final reservation = _byId(id)
-      ..user = _userFor(body)
+    final reservation = _byId(id);
+    if (body.containsKey('userId') || body.containsKey('email')) reservation.user = _userFor(body);
+    reservation
       ..inventory = body['inventory'] as String
       ..controllers = body['controllers'] as int? ?? 0
       ..start = parseWallClock(body['startTime'] as String)

@@ -129,6 +129,40 @@ class MyReservations {
 }
 
 /// A reservation as seen by staff, including who made it.
+/// Someone staff can book a reservation for, found through the person search.
+class ReservationPerson {
+  ReservationPerson({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.sNumber,
+    this.reservationCount = 0,
+  });
+
+  factory ReservationPerson.fromJson(Map<String, dynamic> json) => ReservationPerson(
+    id: json['id'] as int,
+    name: json['name'] as String?,
+    email: json['email'] as String,
+    sNumber: json['sNumber'] as String? ?? '',
+    reservationCount: json['reservationCount'] as int? ?? 0,
+  );
+
+  final int id;
+  final String? name;
+  final String email;
+  final String sNumber;
+  final int reservationCount;
+
+  bool get hasName => name?.trim().isNotEmpty ?? false;
+  bool get hasSNumber => sNumber.isNotEmpty && sNumber != 'N/A';
+
+  /// The name when known, else the email address.
+  String get displayName => hasName ? name! : email;
+
+  /// Email and student number, without repeating what [displayName] shows.
+  String get details => [if (hasName) email, if (hasSNumber) sNumber].join(' · ');
+}
+
 class AdminReservation {
   AdminReservation({
     required this.id,

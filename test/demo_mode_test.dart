@@ -52,7 +52,7 @@ void main() {
       await tester.tap(find.text('Demo bekijken zonder account'));
       await settle(tester);
 
-      // The seeded PS5 session is tomorrow, so booking one today or tomorrow stays possible.
+      // The seeded PS5 session is in two days, so booking today or tomorrow stays possible.
       expect(auth.isDemo, isTrue);
       expect(find.textContaining('niets wordt echt gereserveerd'), findsOneWidget);
       expect(find.text('PlayStation 5'), findsOneWidget);
@@ -96,6 +96,51 @@ void main() {
       expect(find.text('Inloggen met Microsoft'), findsOneWidget);
 
       expect(network, isEmpty);
+    });
+
+    testWidgets('lets the manager book for someone found by name, or for a new person', (tester) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      final auth = AuthController(httpClient: MockClient((_) async => http.Response('{}', 500)));
+      await auth.restore();
+      await tester.pumpWidget(GamingHubApp(auth: auth));
+      await settle(tester);
+      await tester.tap(find.text('Demo bekijken zonder account'));
+      await settle(tester);
+      await tester.tap(find.text('Beheer'));
+      await settle(tester);
+
+      // Someone who booked before
+      await tester.tap(find.byTooltip('Nieuwe reservatie'));
+      await settle(tester);
+      await tester.enterText(find.widgetWithText(TextField, 'Zoek op naam, e-mail of s-nummer'), 'noor');
+      await settle(tester);
+      expect(find.text('2 reservaties'), findsOneWidget);
+      await tester.tap(find.text('Noor Willems'));
+      await settle(tester);
+      expect(find.text('Wijzigen'), findsOneWidget);
+      await tester.tap(find.text('Opslaan'));
+      await settle(tester);
+      expect(find.text('Reservatie aangemaakt.'), findsOneWidget);
+
+      // Someone new, prefilled from the search
+      await tester.tap(find.byTooltip('Nieuwe reservatie'));
+      await settle(tester);
+      await tester.enterText(find.widgetWithText(TextField, 'Zoek op naam, e-mail of s-nummer'), 'Kim Peeters');
+      await settle(tester);
+      expect(find.text('Niemand gevonden.'), findsOneWidget);
+      await tester.tap(find.text('Nieuwe persoon toevoegen'));
+      await settle(tester);
+      expect(find.widgetWithText(TextFormField, 'Kim Peeters'), findsOneWidget);
+      await tester.tap(find.text('Opslaan'));
+      await settle(tester);
+      expect(find.text('Vul een geldig e-mailadres in'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextFormField, 'E-mailadres'), 'kim.peeters@example.com');
+      await tester.tap(find.text('Opslaan'));
+      await settle(tester);
+      expect(find.text('Reservatie aangemaakt.'), findsOneWidget);
     });
 
     testWidgets('fits the login screen on a small phone', (tester) async {
@@ -166,11 +211,38 @@ void main() {
         expect(day.where((r) => r.id == id), isEmpty);
       });
 
+      test('finds people to book for and books on their existing account', () async {
+        final found = await api.searchPeople('ROBIN');
+        expect(found.single.displayName, 'Robin Claes');
+        expect(found.single.details, 'robin.claes@example.com · s100001');
+        expect(found.single.reservationCount, greaterThan(0));
+
+        final tomorrow = DateTime.utc(2026, 11, 5);
+        final slot = {
+          'inventory': 'pc',
+          'controllers': 0,
+          'startTime': wallClockIso(tomorrow, 1200),
+          'endTime': wallClockIso(tomorrow, 1260),
+        };
+        await api.adminCreateReservation({'userId': found.single.id, ...slot});
+        // The same person by email in other casing, not a duplicate
+        await api.adminCreateReservation({'email': 'Robin.Claes@Example.com', 'name': 'Someone', ...slot});
+
+        final day = await api.reservationsOn(tomorrow);
+        final booked = day.where((r) => r.start == parseWallClock(slot['startTime'] as String));
+        expect(booked.map((r) => r.userId).toSet(), {found.single.id});
+        expect((await api.searchPeople('Someone')), isEmpty);
+      });
+
       test('only lets members book today or the next open day, for 1 to 2 hours', () async {
         // The past check uses the real clock, so book relative to today
         final today = wallClockNow();
         final live = HubApi(
-          ApiClient(baseUrl: 'https://demo.invalid/api', onUnauthorized: () {}, httpClient: DemoBackend(now: today)),
+          ApiClient(
+            baseUrl: 'https://demo.invalid/api',
+            onUnauthorized: () {},
+            httpClient: DemoBackend(now: today),
+          ),
         );
         Future<void> book(int dayOffset, int minutes) => live.createReservation(
           hardware: Hardware.pc,
