@@ -143,6 +143,42 @@ void main() {
       expect(find.text('Reservatie aangemaakt.'), findsOneWidget);
     });
 
+    testWidgets('only marks someone after a deliberate swipe, and can undo it', (tester) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      final auth = AuthController(httpClient: MockClient((_) async => http.Response('{}', 500)));
+      await auth.restore();
+      await tester.pumpWidget(GamingHubApp(auth: auth));
+      await settle(tester);
+      await tester.tap(find.text('Demo bekijken zonder account'));
+      await settle(tester);
+      await tester.tap(find.text('Beheer'));
+      await settle(tester);
+
+      final row = find.ancestor(of: find.text('Robin Claes').first, matching: find.byType(Dismissible));
+      final width = tester.getSize(row).width;
+      final marked = find.textContaining('Robin Claes: afwezig');
+
+      // A short drag, and a quick flick that doesn't get far, leave the reservation alone
+      await tester.drag(row, Offset(-width * 0.4, 0));
+      await settle(tester);
+      expect(marked, findsNothing);
+      await tester.fling(row, Offset(-width * 0.3, 0), 3000);
+      await settle(tester);
+      expect(marked, findsNothing);
+
+      // Dragging past halfway marks it, and the snackbar offers to undo
+      await tester.drag(row, Offset(-width * 0.7, 0));
+      await settle(tester);
+      expect(marked, findsOneWidget);
+      await tester.tap(find.text('Ongedaan maken'));
+      await settle(tester);
+      expect(marked, findsNothing);
+      expect(find.textContaining(RegExp(r'Robin Claes: (geboekt|aanwezig)')), findsOneWidget);
+    });
+
     testWidgets('fits the login screen on a small phone', (tester) async {
       tester.view.physicalSize = const Size(640, 1136); // iPhone SE (1st generation)
       tester.view.devicePixelRatio = 2;

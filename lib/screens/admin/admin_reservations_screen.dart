@@ -120,10 +120,29 @@ class _AdminReservationsScreenState extends State<AdminReservationsScreen> with 
       return;
     }
     if (!mounted) return;
+    final api = AppScope.apiOf(context);
+    final previous = r.status;
     try {
-      await AppScope.apiOf(context).updateStatus(r.id, status);
+      await api.updateStatus(r.id, status);
       HapticFeedback.mediumImpact();
-      if (mounted) showMessage(context, '${r.displayName}: ${statusLabel(status, staff: true).toLowerCase()}');
+      if (mounted) {
+        showMessage(
+          context,
+          '${r.displayName}: ${statusLabel(status, staff: true).toLowerCase()}',
+          action: SnackBarAction(label: 'Ongedaan maken', onPressed: () => _undoStatus(r, previous)),
+        );
+      }
+      _load();
+    } on ApiException catch (e) {
+      if (mounted) showMessage(context, e.message, error: true);
+    }
+  }
+
+  /// Puts a reservation back to the status it had before a swipe or tap.
+  Future<void> _undoStatus(AdminReservation r, ReservationStatus previous) async {
+    try {
+      await AppScope.apiOf(context).updateStatus(r.id, previous);
+      if (mounted) showMessage(context, '${r.displayName}: ${statusLabel(previous, staff: true).toLowerCase()}');
       _load();
     } on ApiException catch (e) {
       if (mounted) showMessage(context, e.message, error: true);
@@ -244,7 +263,11 @@ class _AdminReservationsScreenState extends State<AdminReservationsScreen> with 
                       children: [
                         FilterChip(
                           label: const Text('Alleen geboekt'),
-                          avatar: Icon(Icons.event_available_rounded, size: 18, color: _bookedOnly ? Colors.white : HubColors.blue),
+                          avatar: Icon(
+                            Icons.event_available_rounded,
+                            size: 18,
+                            color: _bookedOnly ? Colors.white : HubColors.blue,
+                          ),
                           selected: _bookedOnly,
                           onSelected: (v) {
                             setState(() => _bookedOnly = v);
@@ -449,7 +472,9 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-class _SwipeableReservation extends StatelessWidget {
+/// Swipe right for present, left for no-show. Deliberately firm: the swipe has to be dragged past
+/// halfway, and a quick flick that doesn't get there does nothing, so scrolling can't mark anyone.
+class _SwipeableReservation extends StatefulWidget {
   const _SwipeableReservation({required this.reservation, required this.onTap, required this.onStatus});
 
   final AdminReservation reservation;
@@ -457,42 +482,69 @@ class _SwipeableReservation extends StatelessWidget {
   final ValueChanged<ReservationStatus> onStatus;
 
   @override
+  State<_SwipeableReservation> createState() => _SwipeableReservationState();
+}
+
+/// How far a row has to be dragged before releasing marks it.
+const _swipeThreshold = 0.55;
+
+class _SwipeableReservationState extends State<_SwipeableReservation> {
+  /// Whether the row is currently dragged past [_swipeThreshold].
+  bool _reached = false;
+
+  /// Whether it was past the threshold when the finger lifted. Dismissible also accepts fast flicks
+  /// that never got there (and reports them as reached while it animates them out), so this decides.
+  bool _reachedOnRelease = false;
+
+  @override
   Widget build(BuildContext context) {
-    final r = reservation;
+    final r = widget.reservation;
     final canMarkPresent = r.status != ReservationStatus.present && r.status != ReservationStatus.cancelled;
     final canMarkNoShow = r.status != ReservationStatus.noShow && r.status != ReservationStatus.cancelled;
 
-    return Dismissible(
-      key: ValueKey('${r.id}-${r.status.key}'),
-      direction: switch ((canMarkPresent, canMarkNoShow)) {
-        (true, true) => DismissDirection.horizontal,
-        (true, false) => DismissDirection.startToEnd,
-        (false, true) => DismissDirection.endToStart,
-        _ => DismissDirection.none,
-      },
-      // Tick when the swipe passes the point where releasing triggers the action.
-      onUpdate: (details) {
-        if (details.reached != details.previousReached) HapticFeedback.mediumImpact();
-      },
-      dismissThresholds: const {DismissDirection.startToEnd: 0.3, DismissDirection.endToStart: 0.3},
-      // The row stays; the list reloads with the new status.
-      confirmDismiss: (direction) async {
-        onStatus(direction == DismissDirection.startToEnd ? ReservationStatus.present : ReservationStatus.noShow);
-        return false;
-      },
-      background: const _SwipeBackground(
-        color: HubColors.green,
-        icon: Icons.how_to_reg_rounded,
-        label: 'Aanwezig',
-        alignment: Alignment.centerLeft,
+    return Listener(
+      onPointerDown: (_) => _reachedOnRelease = false,
+      onPointerUp: (_) => _reachedOnRelease = _reached,
+      child: Dismissible(
+        key: ValueKey('${r.id}-${r.status.key}'),
+        direction: switch ((canMarkPresent, canMarkNoShow)) {
+          (true, true) => DismissDirection.horizontal,
+          (true, false) => DismissDirection.startToEnd,
+          (false, true) => DismissDirection.endToStart,
+          _ => DismissDirection.none,
+        },
+        // Tick when the swipe passes the point where releasing triggers the action.
+        onUpdate: (details) {
+          if (details.reached != details.previousReached) HapticFeedback.mediumImpact();
+          _reached = details.reached;
+        },
+        dismissThresholds: const {
+          DismissDirection.startToEnd: _swipeThreshold,
+          DismissDirection.endToStart: _swipeThreshold,
+        },
+        // The row stays; the list reloads with the new status.
+        confirmDismiss: (direction) async {
+          if (!_reachedOnRelease) return false;
+          _reachedOnRelease = false;
+          widget.onStatus(
+            direction == DismissDirection.startToEnd ? ReservationStatus.present : ReservationStatus.noShow,
+          );
+          return false;
+        },
+        background: const _SwipeBackground(
+          color: HubColors.green,
+          icon: Icons.how_to_reg_rounded,
+          label: 'Aanwezig',
+          alignment: Alignment.centerLeft,
+        ),
+        secondaryBackground: const _SwipeBackground(
+          color: HubColors.danger,
+          icon: Icons.person_off_rounded,
+          label: 'Afwezig',
+          alignment: Alignment.centerRight,
+        ),
+        child: _AdminReservationCard(reservation: r, onTap: widget.onTap),
       ),
-      secondaryBackground: const _SwipeBackground(
-        color: HubColors.danger,
-        icon: Icons.person_off_rounded,
-        label: 'Afwezig',
-        alignment: Alignment.centerRight,
-      ),
-      child: _AdminReservationCard(reservation: r, onTap: onTap),
     );
   }
 }
@@ -724,7 +776,12 @@ class _AdminReservationSheet extends StatelessWidget {
 }
 
 class _DeviceFilterChip extends StatelessWidget {
-  const _DeviceFilterChip({required this.hardware, required this.label, required this.selected, required this.onSelected});
+  const _DeviceFilterChip({
+    required this.hardware,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final Hardware? hardware;
   final String label;
@@ -746,8 +803,10 @@ class _DeviceFilterChip extends StatelessWidget {
           ),
           child: Column(
             children: [
-              if (hardware != null) Icon(hardwareIcon(hardware!), size: 20, color: selected ? HubColors.red : HubColors.textSecondary),
-              if (hardware == null) Icon(Icons.devices_rounded, size: 20, color: selected ? HubColors.red : HubColors.textSecondary),
+              if (hardware != null)
+                Icon(hardwareIcon(hardware!), size: 20, color: selected ? HubColors.red : HubColors.textSecondary),
+              if (hardware == null)
+                Icon(Icons.devices_rounded, size: 20, color: selected ? HubColors.red : HubColors.textSecondary),
               const SizedBox(height: 4),
               Text(
                 label,

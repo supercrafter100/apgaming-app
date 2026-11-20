@@ -239,7 +239,7 @@ Widget _adaptiveAction(
   );
 }
 
-void showMessage(BuildContext context, String message, {bool error = false}) {
+void showMessage(BuildContext context, String message, {bool error = false, SnackBarAction? action}) {
   if (error) HapticFeedback.heavyImpact();
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -256,6 +256,7 @@ void showMessage(BuildContext context, String message, {bool error = false}) {
             Expanded(child: Text(message)),
           ],
         ),
+        action: action,
       ),
     );
 }
