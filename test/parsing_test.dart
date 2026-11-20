@@ -31,9 +31,11 @@ void main() {
   });
 
   test('translates known backend errors to Dutch', () {
+    expect(translateApiMessage('You can only make 1 reservation per day'), 'Je kan maximaal 1 reservatie per dag maken.');
+    expect(translateApiMessage('You can only make 3 reservations per day'), 'Je kan maximaal 3 reservaties per dag maken.');
     expect(
-      translateApiMessage('You can only make two reservations per day'),
-      'Je kan maximaal twee reservaties per dag maken.',
+      translateApiMessage('You must have at least 90 minutes between reservations'),
+      'Er moet minstens 90 minuten tussen je reservaties zitten.',
     );
     expect(translateApiMessage('All pcs are already reserved for this time slot'), contains('al gereserveerd'));
     expect(translateApiMessage('Something new'), 'Something new');

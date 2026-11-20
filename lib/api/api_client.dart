@@ -88,9 +88,6 @@ String translateApiMessage(String message) {
     'A reservation must last 1, 1.5 or 2 hours': 'Een reservatie duurt 1, 1,5 of 2 uur.',
     'You already have a reservation that overlaps with this time slot':
         'Je hebt al een reservatie die overlapt met dit tijdslot.',
-    'You must have at least 30 minutes between reservations':
-        'Er moet minstens 30 minuten tussen je reservaties zitten.',
-    'You can only make two reservations per day': 'Je kan maximaal twee reservaties per dag maken.',
     'Reservation is already cancelled': 'Deze reservatie is al geannuleerd.',
     'You cannot cancel a reservation that has already started or passed':
         'Je kan geen reservatie annuleren die al begonnen of voorbij is.',
@@ -102,6 +99,14 @@ String translateApiMessage(String message) {
     'Invalid or expired authentication token': 'Je sessie is verlopen. Log opnieuw in.',
   };
   if (known.containsKey(message)) return known[message]!;
+  final gap = RegExp(r'^You must have at least (\d+) minutes between reservations$').firstMatch(message);
+  if (gap != null) return 'Er moet minstens ${gap[1]} minuten tussen je reservaties zitten.';
+  final perDay = RegExp(r'^You can only make (\d+) reservations? per day$').firstMatch(message);
+  if (perDay != null) {
+    return perDay[1] == '1'
+        ? 'Je kan maximaal 1 reservatie per dag maken.'
+        : 'Je kan maximaal ${perDay[1]} reservaties per dag maken.';
+  }
   if (message.startsWith('You already have three no-shows')) {
     return 'Je hebt al drie no-shows dit semester. Je kan pas opnieuw reserveren vanaf het volgende semester.';
   }

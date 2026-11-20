@@ -18,8 +18,9 @@ class DemoBackend extends http.BaseClient {
 
   static const _latency = Duration(milliseconds: 120);
   static const _noShowLimit = 3;
-  static const _maxPerDay = 2;
-  static const _minGap = Duration(minutes: 30);
+  // Defaults of the configurable limits on the real backend
+  static const _maxPerDay = 1;
+  static const _minGap = Duration(minutes: 90);
 
   static const _inventory = {'pc': 5, 'ps5': 2, 'switch': 2, 'controller': 4, 'Nintendo Controllers': 4};
 
@@ -54,7 +55,7 @@ class DemoBackend extends http.BaseClient {
     }
 
     // Your own reservations
-    add(_me, 'ps5', at(1, 14), at(1, 15), controllers: 2);
+    add(_me, 'ps5', at(2, 14), at(2, 15), controllers: 2); // outside tomorrow, so the demo can still book a day
     add(_me, 'pc', at(-3, 12), at(-3, 13), status: 'PRESENT');
     add(_me, 'switch', at(-7, 16), at(-7, 17), controllers: 1, status: 'NO_SHOW');
     add(_me, 'ps5', at(-10, 18), at(-10, 19), controllers: 2, status: 'CANCELLED');
@@ -224,10 +225,10 @@ class DemoBackend extends http.BaseClient {
       throw _DemoError(400, 'You already have a reservation that overlaps with this time slot');
     }
     if (active.any((r) => r.overlaps(start.subtract(_minGap), end.add(_minGap)))) {
-      throw _DemoError(400, 'You must have at least 30 minutes between reservations');
+      throw _DemoError(400, 'You must have at least ${_minGap.inMinutes} minutes between reservations');
     }
     if (active.where((r) => isSameDay(r.start, start)).length >= _maxPerDay) {
-      throw _DemoError(400, 'You can only make two reservations per day');
+      throw _DemoError(400, 'You can only make 1 reservation per day');
     }
 
     return _adminJson(_insert(_me, body, start, end));
