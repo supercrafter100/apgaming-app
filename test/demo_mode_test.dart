@@ -158,6 +158,8 @@ void main() {
       await settle(tester);
 
       final row = find.ancestor(of: find.text('Robin Claes').first, matching: find.byType(Dismissible));
+      await tester.ensureVisible(row);
+      await settle(tester);
       final width = tester.getSize(row).width;
       final marked = find.textContaining('Robin Claes: afwezig');
 
@@ -177,6 +179,28 @@ void main() {
       await settle(tester);
       expect(marked, findsNothing);
       expect(find.textContaining(RegExp(r'Robin Claes: (geboekt|aanwezig)')), findsOneWidget);
+    });
+
+    testWidgets('warns the manager about people with notes before they arrive', (tester) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      final auth = AuthController(httpClient: MockClient((_) async => http.Response('{}', 500)));
+      await auth.restore();
+      await tester.pumpWidget(GamingHubApp(auth: auth));
+      await settle(tester);
+      await tester.tap(find.text('Demo bekijken zonder account'));
+      await settle(tester);
+      await tester.tap(find.text('Beheer'));
+      await settle(tester);
+
+      // Robin has a warning and is expected today
+      expect(find.text('Let op vandaag'), findsOneWidget);
+      await tester.tap(find.textContaining('Robin Claes ·'));
+      await settle(tester);
+      expect(find.textContaining('open blikje frisdrank'), findsOneWidget);
+      expect(find.text('WAARSCHUWING'), findsOneWidget);
     });
 
     testWidgets('fits the login screen on a small phone', (tester) async {
@@ -200,7 +224,7 @@ void main() {
       setUp(() {
         final client = ApiClient(
           baseUrl: 'https://demo.invalid/api',
-          onUnauthorized: () {},
+          onUnauthorized: (_) {},
           httpClient: DemoBackend(now: now),
         );
         api = HubApi(client);
@@ -212,6 +236,16 @@ void main() {
 
         final today = await api.reservationsOn(now);
         expect(today.singleWhere((r) => r.cuid == DemoBackend.checkInCode).status, ReservationStatus.present);
+      });
+
+      test('flags people with notes, and shows them when their code is scanned', () async {
+        final tomorrow = await api.reservationsOn(DateTime.utc(2026, 11, 5));
+        final jules = tomorrow.singleWhere((r) => r.displayName == 'Jules Peeters');
+        expect(jules.isBlocked, isTrue);
+        expect(jules.activeNotes.map((n) => n.type), [NoteType.block, NoteType.warning]);
+
+        final verified = await api.verify(DemoBackend.checkInCode);
+        expect(verified.worstNote, NoteType.warning);
       });
 
       test('reports an unknown code the way the real backend does', () async {
@@ -276,7 +310,7 @@ void main() {
         final live = HubApi(
           ApiClient(
             baseUrl: 'https://demo.invalid/api',
-            onUnauthorized: () {},
+            onUnauthorized: (_) {},
             httpClient: DemoBackend(now: today),
           ),
         );
@@ -341,6 +375,25 @@ void main() {
 
       expect(auth.status, AuthStatus.signedOut);
       expect(auth.error, contains('Microsoft'));
+      expect(await storage.read(key: 'auth_token'), isNull);
+    });
+
+    test('ends a saved session of a blocked account and says why', () async {
+      FlutterSecureStorage.setMockInitialValues({'auth_token': 'blocked-session'});
+      const storage = FlutterSecureStorage();
+      final blocked = MockClient(
+        (_) async => http.Response(
+          jsonEncode({'message': 'Account blocked', 'error': 'Unauthorized', 'statusCode': 401}),
+          401,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      final auth = AuthController(httpClient: blocked, storage: storage);
+      await auth.restore();
+
+      expect(auth.status, AuthStatus.signedOut);
+      expect(auth.error, accountBlockedMessage);
       expect(await storage.read(key: 'auth_token'), isNull);
     });
 

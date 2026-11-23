@@ -32,6 +32,66 @@ enum ReservationStatus {
   static ReservationStatus fromKey(String key) => values.firstWhere((s) => s.key == key, orElse: () => reserved);
 }
 
+/// The kinds of notes staff keep about someone, most serious last.
+enum NoteType {
+  note('NOTE'),
+  warning('WARNING'),
+  block('BLOCK');
+
+  const NoteType(this.key);
+
+  final String key;
+
+  /// Higher is more serious.
+  int get severity => index;
+
+  static NoteType fromKey(String key) => values.firstWhere((t) => t.key == key, orElse: () => note);
+}
+
+/// A note about someone that still counts: a plain note, a warning, or a block that keeps them off the site.
+class ActiveNote {
+  ActiveNote({
+    required this.id,
+    required this.type,
+    required this.content,
+    required this.authorName,
+    required this.createdAt,
+    required this.expiresAt,
+  });
+
+  factory ActiveNote.fromJson(Map<String, dynamic> json) => ActiveNote(
+    id: json['id'] as int,
+    type: NoteType.fromKey(json['type'] as String),
+    content: json['content'] as String,
+    authorName: json['authorName'] as String?,
+    // Real moments, unlike reservation times: shown in the phone's own time zone.
+    createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
+    expiresAt: json['expiresAt'] == null ? null : DateTime.parse(json['expiresAt'] as String).toLocal(),
+  );
+
+  final int id;
+  final NoteType type;
+  final String content;
+  final String? authorName;
+  final DateTime createdAt;
+
+  /// When the note stops counting; null keeps it active until staff end it.
+  final DateTime? expiresAt;
+}
+
+List<ActiveNote> _activeNotes(Object? json) =>
+    (json as List? ?? const []).map((n) => ActiveNote.fromJson(n as Map<String, dynamic>)).toList()
+      ..sort((a, b) => b.type.severity.compareTo(a.type.severity));
+
+/// Shared by everything that carries someone's active notes.
+mixin HasActiveNotes {
+  List<ActiveNote> get activeNotes;
+
+  /// The most serious note type, which decides how someone is flagged; null without notes.
+  NoteType? get worstNote => activeNotes.isEmpty ? null : activeNotes.first.type;
+  bool get isBlocked => worstNote == NoteType.block;
+}
+
 class Profile {
   Profile({
     required this.id,
@@ -163,7 +223,7 @@ class ReservationPerson {
   String get details => [if (hasName) email, if (hasSNumber) sNumber].join(' · ');
 }
 
-class AdminReservation {
+class AdminReservation with HasActiveNotes {
   AdminReservation({
     required this.id,
     required this.cuid,
@@ -177,6 +237,7 @@ class AdminReservation {
     required this.start,
     required this.end,
     required this.status,
+    this.activeNotes = const [],
   });
 
   factory AdminReservation.fromJson(Map<String, dynamic> json) {
@@ -194,6 +255,7 @@ class AdminReservation {
       start: parseWallClock(json['startTime'] as String),
       end: parseWallClock(json['endTime'] as String),
       status: ReservationStatus.fromKey(json['status'] as String),
+      activeNotes: _activeNotes(user?['activeNotes']),
     );
   }
 
@@ -209,6 +271,8 @@ class AdminReservation {
   final DateTime start;
   final DateTime end;
   final ReservationStatus status;
+  @override
+  final List<ActiveNote> activeNotes;
 
   String get displayName => (userName?.isNotEmpty ?? false) ? userName! : email;
   bool get hasSNumber => (sNumber?.isNotEmpty ?? false) && sNumber != 'N/A';
@@ -222,7 +286,7 @@ class AdminReservation {
   }
 }
 
-class VerifiedReservation {
+class VerifiedReservation with HasActiveNotes {
   VerifiedReservation({
     required this.email,
     required this.sNumber,
@@ -231,6 +295,7 @@ class VerifiedReservation {
     required this.start,
     required this.end,
     required this.status,
+    this.activeNotes = const [],
   });
 
   factory VerifiedReservation.fromJson(Map<String, dynamic> json) => VerifiedReservation(
@@ -241,6 +306,7 @@ class VerifiedReservation {
     start: parseWallClock(json['startTime'] as String),
     end: parseWallClock(json['endTime'] as String),
     status: ReservationStatus.fromKey(json['status'] as String),
+    activeNotes: _activeNotes(json['activeNotes']),
   );
 
   final String email;
@@ -250,6 +316,8 @@ class VerifiedReservation {
   final DateTime start;
   final DateTime end;
   final ReservationStatus status;
+  @override
+  final List<ActiveNote> activeNotes;
 }
 
 class TimetableEntry {

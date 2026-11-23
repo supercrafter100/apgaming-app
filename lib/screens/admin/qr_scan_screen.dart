@@ -9,6 +9,7 @@ import '../../demo/demo_backend.dart';
 import '../../theme.dart';
 import '../../util/wall_clock.dart';
 import '../../widgets/common.dart';
+import '../../widgets/notes.dart';
 
 /// Accepts a plain CUID or a URL ending in one, like the website's scanner.
 String extractCuid(String scanned) {
@@ -276,6 +277,13 @@ class _ResultSheet extends StatelessWidget {
           ),
           if (ok) ...[
             const SizedBox(height: 16),
+            if (r.isBlocked) ...[
+              const BlockedBanner(
+                message: 'Deze persoon is geblokkeerd. Bekijk de blokkade hieronder voor je toegang geeft.',
+              ),
+              const SizedBox(height: 12),
+            ],
+            NotesSection(notes: r.activeNotes),
             if (!isToday)
               Container(
                 margin: const EdgeInsets.only(bottom: 8),

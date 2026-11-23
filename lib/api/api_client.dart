@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode});
@@ -22,7 +23,9 @@ class ApiClient {
     : httpClient = httpClient ?? http.Client();
 
   final String baseUrl;
-  final void Function() onUnauthorized;
+
+  /// Called with the server's reason, already translated, when a request with a session is refused.
+  final void Function(String message) onUnauthorized;
 
   /// Sends the requests; the demo swaps this for an in-memory backend.
   http.Client httpClient;
@@ -53,8 +56,9 @@ class ApiClient {
 
     if (response.statusCode >= 200 && response.statusCode < 300) return decoded;
 
-    if (response.statusCode == 401 && token != null) onUnauthorized();
-    throw ApiException(_errorMessage(decoded, response.statusCode), statusCode: response.statusCode);
+    final message = _errorMessage(decoded, response.statusCode);
+    if (response.statusCode == 401 && token != null) onUnauthorized(message);
+    throw ApiException(message, statusCode: response.statusCode);
   }
 
   static dynamic _tryDecode(String body) {
@@ -80,6 +84,16 @@ class ApiClient {
 }
 
 /// The backend answers in English; members see Dutch everywhere else on the platform.
+/// What a blocked person sees when the backend refuses them.
+const accountBlockedMessage =
+    'Je account is geblokkeerd door het team van de AP Gaming Hub. Spreek een medewerker aan of contacteer ons via Discord.';
+
+/// The blocked message with the end of the block, when the backend told us.
+String accountBlockedUntil(DateTime? until) => until == null
+    ? accountBlockedMessage
+    : 'Je account is geblokkeerd door het team van de AP Gaming Hub tot ${DateFormat('d MMMM y, HH:mm', 'nl_BE').format(until.toLocal())}. '
+          'Spreek een medewerker aan of contacteer ons via Discord.';
+
 String translateApiMessage(String message) {
   const known = {
     'Cannot reserve in the past': 'Je kan niet reserveren in het verleden.',
@@ -97,6 +111,7 @@ String translateApiMessage(String message) {
     'Invalid or expired login code': 'Inloggen is verlopen. Probeer opnieuw.',
     'Unauthorized': 'Je sessie is verlopen. Log opnieuw in.',
     'Invalid or expired authentication token': 'Je sessie is verlopen. Log opnieuw in.',
+    'Account blocked': accountBlockedMessage,
   };
   if (known.containsKey(message)) return known[message]!;
   final gap = RegExp(r'^You must have at least (\d+) minutes between reservations$').firstMatch(message);

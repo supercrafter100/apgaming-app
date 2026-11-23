@@ -11,6 +11,7 @@ import '../../theme.dart';
 import '../../util/wall_clock.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
+import '../../widgets/notes.dart';
 import '../../widgets/pickers.dart';
 import 'no_shows_screen.dart';
 import 'qr_scan_screen.dart';
@@ -256,6 +257,7 @@ class _AdminReservationsScreenState extends State<AdminReservationsScreen> with 
                     ),
                     const SizedBox(height: 12),
                     if (all != null) _DaySummary(reservations: all),
+                    if (all != null) _NotesHeadsUp(reservations: all, day: _day),
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 8,
@@ -439,6 +441,71 @@ class _DaySummary extends StatelessWidget {
   }
 }
 
+/// Everyone expected on this day who has notes that still count, so staff know before they arrive.
+class _NotesHeadsUp extends StatelessWidget {
+  const _NotesHeadsUp({required this.reservations, required this.day});
+
+  final List<AdminReservation> reservations;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final seen = <int>{};
+    final flagged = [
+      for (final r in reservations)
+        if ((r.status == ReservationStatus.reserved || r.status == ReservationStatus.present) &&
+            r.activeNotes.isNotEmpty &&
+            seen.add(r.userId)) // the list is sorted by start time, so this keeps their first session
+          r,
+    ];
+    if (flagged.isEmpty) return const SizedBox.shrink();
+
+    final text = Theme.of(context).textTheme;
+    final when = formatRelativeDay(day);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCD34D).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFCD34D).withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFFCD34D)),
+              const SizedBox(width: 8),
+              Text(
+                'Let op ${when == 'Vandaag' || when == 'Morgen' || when == 'Gisteren' ? when.toLowerCase() : 'op ${formatShortDate(day)}'}',
+                style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '${flagged.length} ${flagged.length == 1 ? 'persoon heeft' : 'personen hebben'} notities',
+                  style: text.bodySmall?.copyWith(color: HubColors.textMuted),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final r in flagged)
+                NoteFlag(notes: r.activeNotes, name: r.displayName, label: '${r.displayName} · ${formatTime(r.start)}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatTile extends StatelessWidget {
   const _StatTile({required this.label, required this.value, required this.color});
 
@@ -591,14 +658,19 @@ class _AdminReservationCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final now = wallClockNow();
     final inProgress = r.status != ReservationStatus.cancelled && !now.isBefore(r.start) && now.isBefore(r.end);
+    // A blocked person stands out even more than a session that's running
+    final edge = r.isBlocked
+        ? HubColors.danger.withValues(alpha: 0.7)
+        : (inProgress ? HubColors.red.withValues(alpha: 0.5) : null);
 
     return Pressable(
       onTap: onTap,
       child: Card(
-        shape: inProgress
+        color: r.isBlocked ? Color.alphaBlend(HubColors.danger.withValues(alpha: 0.06), HubColors.surface) : null,
+        shape: edge != null
             ? RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: HubColors.red.withValues(alpha: 0.5)),
+                side: BorderSide(color: edge),
               )
             : null,
         child: Padding(
@@ -640,6 +712,10 @@ class _AdminReservationCard extends StatelessWidget {
                             message: 'Nieuwe bezoeker',
                             child: Icon(Icons.fiber_new_rounded, size: 18, color: Color(0xFF34D399)),
                           ),
+                        ],
+                        if (r.activeNotes.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          NoteFlag(notes: r.activeNotes, name: r.displayName),
                         ],
                       ],
                     ),
@@ -718,6 +794,13 @@ class _AdminReservationSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          if (r.isBlocked) ...[
+            const BlockedBanner(
+              message: 'Deze persoon is geblokkeerd en kan niet inloggen. Bekijk de blokkade voor je toegang geeft.',
+            ),
+            const SizedBox(height: 12),
+          ],
+          NotesSection(notes: r.activeNotes),
           if (r.hasSNumber) DetailRow(icon: Icons.badge_outlined, label: 'S-nummer', value: r.sNumber!),
           DetailRow(icon: Icons.calendar_today_rounded, label: 'Datum', value: formatLongDate(r.start)),
           DetailRow(icon: Icons.schedule_rounded, label: 'Tijd', value: formatTimeRange(r.start, r.end)),

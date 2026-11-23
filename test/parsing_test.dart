@@ -3,8 +3,11 @@ import 'package:ap_gaming_app/api/models.dart';
 import 'package:ap_gaming_app/screens/admin/qr_scan_screen.dart';
 import 'package:ap_gaming_app/util/wall_clock.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() {
+  setUpAll(() => initializeDateFormatting('nl_BE'));
+
   test('reservation times keep their wall-clock value', () {
     final r = MyReservation.fromJson({
       'cuid': 'abc',
@@ -56,5 +59,66 @@ void main() {
     expect(profile.hasSNumber, isFalse);
     expect(profile.canManageReservations, isFalse);
     expect(profile.canManageNoShows, isTrue);
+  });
+
+  test('reads someone\'s active notes, most serious first', () {
+    final r = AdminReservation.fromJson({
+      'id': 1,
+      'cuid': 'abc',
+      'userId': 7,
+      'email': 'jamie@example.com',
+      'inventory': 'pc',
+      'controllers': 0,
+      'startTime': '2026-11-24T14:00:00.000Z',
+      'endTime': '2026-11-24T15:00:00.000Z',
+      'status': 'RESERVED',
+      'user': {
+        'name': 'Jamie',
+        'activeNotes': [
+          {
+            'id': 1,
+            'type': 'NOTE',
+            'content': 'Vriendelijk',
+            'authorName': null,
+            'createdAt': '2026-11-20T10:00:00.000Z',
+            'expiresAt': null,
+          },
+          {
+            'id': 2,
+            'type': 'BLOCK',
+            'content': 'Headset beschadigd',
+            'authorName': 'Staff',
+            'createdAt': '2026-11-22T10:00:00.000Z',
+            'expiresAt': '2026-11-30T17:00:00.000Z',
+          },
+        ],
+      },
+    });
+
+    expect(r.activeNotes.map((n) => n.type), [NoteType.block, NoteType.note]);
+    expect(r.worstNote, NoteType.block);
+    expect(r.isBlocked, isTrue);
+    // A note's end is a real moment, so it keeps its instant instead of being read as wall-clock time
+    expect(r.activeNotes.first.expiresAt!.toUtc(), DateTime.utc(2026, 11, 30, 17));
+    expect(r.activeNotes.last.expiresAt, isNull);
+  });
+
+  test('a reservation without notes is not flagged', () {
+    final r = VerifiedReservation.fromJson({
+      'email': 'jamie@example.com',
+      'inventory': 'pc',
+      'startTime': '2026-11-24T14:00:00.000Z',
+      'endTime': '2026-11-24T15:00:00.000Z',
+      'status': 'PRESENT',
+    });
+    expect(r.activeNotes, isEmpty);
+    expect(r.worstNote, isNull);
+    expect(r.isBlocked, isFalse);
+  });
+
+  test('explains a blocked account, with the end when known', () {
+    expect(translateApiMessage('Account blocked'), accountBlockedMessage);
+    expect(accountBlockedUntil(null), accountBlockedMessage);
+    expect(accountBlockedUntil(DateTime.utc(2026, 11, 30, 17)), contains('2026'));
   });
 }

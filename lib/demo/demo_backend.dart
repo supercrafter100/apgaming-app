@@ -39,7 +39,49 @@ class DemoBackend extends http.BaseClient {
     final noor = _DemoUser(1002, 'Noor Willems', 'noor.willems@example.com', 's100002');
     final sam = _DemoUser(1003, 'Sam Janssens', 'sam.janssens@example.com', 's100003');
     final lotte = _DemoUser(1004, 'Lotte Maes', 'lotte.maes@example.com', 's100004');
-    _users.addAll([_me, robin, noor, sam, lotte]);
+    final jules = _DemoUser(1005, 'Jules Peeters', 'jules.peeters@example.com', 's100005');
+    _users.addAll([_me, robin, noor, sam, lotte, jules]);
+
+    // Notes the team keeps, so the manager screens show warnings and a block like the real app.
+    // Unlike reservation times these are real moments in time.
+    final moment = DateTime.now().toUtc();
+    robin.notes.add(
+      _DemoNote(
+        1,
+        'WARNING',
+        'Liet een open blikje frisdrank naast het toetsenbord staan.',
+        moment.subtract(const Duration(days: 2)),
+        moment.add(const Duration(days: 28)),
+      ),
+    );
+    lotte.notes.add(
+      _DemoNote(
+        2,
+        'NOTE',
+        'Gebruikt een rolstoel: houd graag de plek aan het raam vrij.',
+        moment.subtract(const Duration(days: 5)),
+        null,
+      ),
+    );
+    jules.notes
+      ..add(
+        _DemoNote(
+          3,
+          'BLOCK',
+          'Heeft opzettelijk een headset beschadigd.',
+          moment.subtract(const Duration(days: 1)),
+          moment.add(const Duration(days: 6)),
+        ),
+      )
+      ..add(
+        _DemoNote(
+          4,
+          'WARNING',
+          'Riep herhaaldelijk luid in voice chat zonder headset.',
+          moment.subtract(const Duration(days: 10)),
+          moment.add(const Duration(days: 20)),
+        ),
+      );
 
     void add(
       _DemoUser user,
@@ -71,6 +113,7 @@ class DemoBackend extends http.BaseClient {
     // Tomorrow, and an earlier no-show for the manager to handle
     add(noor, 'pc', at(1, 11), at(1, 13));
     add(lotte, 'switch', at(1, 16), at(1, 17), controllers: 2);
+    add(jules, 'pc', at(1, 14), at(1, 15, 30));
     add(sam, 'pc', at(-2, 13), at(-2, 14), status: 'NO_SHOW');
   }
 
@@ -193,8 +236,28 @@ class DemoBackend extends http.BaseClient {
       'name': r.user.name,
       'sNumber': r.user.sNumber,
       'reservationCount': _reservations.where((other) => other.user == r.user).length,
+      'activeNotes': _activeNotes(r.user),
     },
   };
+
+  /// The user's notes that still count, most serious first, like the real backend sends them.
+  List<Map<String, dynamic>> _activeNotes(_DemoUser user) {
+    const severity = {'BLOCK': 0, 'WARNING': 1, 'NOTE': 2};
+    final now = DateTime.now().toUtc();
+    return [
+      for (final note
+          in user.notes.where((n) => n.expiresAt == null || n.expiresAt!.isAfter(now)).toList()
+            ..sort((a, b) => severity[a.type]!.compareTo(severity[b.type]!)))
+        {
+          'id': note.id,
+          'type': note.type,
+          'content': note.content,
+          'authorName': 'Demo Beheerder',
+          'createdAt': note.createdAt.toIso8601String(),
+          'expiresAt': note.expiresAt?.toIso8601String(),
+        },
+    ];
+  }
 
   /// The same rules a member runs into on the real backend, with the same messages.
   Map<String, dynamic> _create(Map<String, dynamic> body) {
@@ -322,6 +385,8 @@ class DemoBackend extends http.BaseClient {
     if (reservation.status == 'RESERVED') reservation.status = 'PRESENT';
     return {
       'cuid': reservation.cuid,
+      'userId': reservation.user.id,
+      'activeNotes': _activeNotes(reservation.user),
       'email': reservation.user.email,
       'sNumber': reservation.user.sNumber,
       'inventory': reservation.inventory,
@@ -367,6 +432,17 @@ class _DemoUser {
   final String? name;
   final String email;
   final String sNumber;
+  final notes = <_DemoNote>[];
+}
+
+class _DemoNote {
+  _DemoNote(this.id, this.type, this.content, this.createdAt, this.expiresAt);
+
+  final int id;
+  final String type;
+  final String content;
+  final DateTime createdAt;
+  final DateTime? expiresAt;
 }
 
 class _DemoReservation {

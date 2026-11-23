@@ -70,7 +70,11 @@ class AuthController extends ChangeNotifier {
       unawaited(push.start(api));
     } on ApiException catch (e) {
       // Keep the session when we're just offline; the screens show their own errors.
-      if (e.isUnauthorized) return _setSignedOut();
+      if (e.isUnauthorized) {
+        // A blocked person should know why they're signed out; an expired session needs no explanation.
+        if (e.message == accountBlockedMessage) await _forget(e.message);
+        return _setSignedOut();
+      }
       status = AuthStatus.signedOut;
       error = e.message;
       notifyListeners();
@@ -101,6 +105,9 @@ class AuthController extends ChangeNotifier {
 
       final callback = Uri.parse(result).queryParameters;
       if (callback['error'] == 'not-manager') throw ApiException(_microsoftRequired);
+      if (callback['error'] == 'blocked') {
+        throw ApiException(accountBlockedUntil(DateTime.tryParse(callback['until'] ?? '')));
+      }
 
       final code = callback['code'];
       if (code == null) throw ApiException('Inloggen is mislukt. Probeer opnieuw.');
@@ -154,11 +161,17 @@ class AuthController extends ChangeNotifier {
     return canReserve || account.canManageReservations;
   }
 
-  void _handleUnauthorized() {
+  void _handleUnauthorized(String message) {
     if (status != AuthStatus.signedIn) return;
-    error = 'Je sessie is verlopen. Log opnieuw in.';
+    error = message == accountBlockedMessage ? message : 'Je sessie is verlopen. Log opnieuw in.';
     // The session is already invalid, so the backend can't be told to unregister the phone.
     signOut(unregisterDevice: false);
+  }
+
+  /// Drops a stored session the backend refused for good, keeping the reason to show on the login screen.
+  Future<void> _forget(String reason) async {
+    error = reason;
+    await _storage.delete(key: _tokenKey);
   }
 
   void _setSignedOut() {
