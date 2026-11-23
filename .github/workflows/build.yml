@@ -9,6 +9,10 @@ on:
         description: Upload the iOS build to TestFlight
         type: boolean
         default: false
+      play:
+        description: Upload the Android build to Google Play
+        type: boolean
+        default: false
 
 concurrency:
   group: build-${{ github.ref }}
@@ -40,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY_ACCESS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      UPLOAD_TO_PLAY: ${{ github.event_name == 'release' || inputs.play }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -88,6 +94,23 @@ jobs:
           name: android
           path: dist/
           if-no-files-found: error
+
+      # Only a bundle signed with the upload key is accepted; the testers are picked per track in Play Console.
+      - name: Upload to Google Play
+        if: env.HAS_KEYSTORE == 'true' && env.HAS_PLAY_ACCESS == 'true' && env.UPLOAD_TO_PLAY == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: be.svinnovations.ap_gaming_app
+          releaseFiles: dist/ap-gaming-hub.aab
+          # internal (default), alpha for closed testing, or a custom track's name
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          # draft until the app's first release has been rolled out by hand in Play Console (see README)
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'completed' }}
+
+      - name: Report skipped Google Play upload
+        if: (env.HAS_KEYSTORE != 'true' || env.HAS_PLAY_ACCESS != 'true') && env.UPLOAD_TO_PLAY == 'true'
+        run: echo "::warning::Not uploaded to Google Play because the Android signing or Play access secrets are missing (see README)."
 
   ios:
     name: iOS
