@@ -213,6 +213,16 @@ If the upload fails with *Only releases with status draft may be created on draf
 
 Each upload needs a higher version code than the last. The version code is the workflow run number, like the iOS build number, so start a new run rather than re-running one whose upload succeeded.
 
+### Store assets
+
+`store/google-play/` holds what the Play Store listing asks for: the 512 × 512 icon, the 1024 × 500 feature graphic and six 1080 × 1920 phone screenshots. The screenshots are the real screens with the demo data, so after a visible change to the app, rebuild them all:
+
+```bash
+tool/store_assets.sh   # needs rsvg-convert and ImageMagick 7
+```
+
+The sample reservations are relative to the current time; run it during the day so today still has sessions to come.
+
 ### App icon and launch screen
 
 The icon is the website's gamepad mark. Its sources are the SVGs in `assets/icon`; after editing one, render it to PNG and regenerate:
